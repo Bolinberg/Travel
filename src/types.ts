@@ -54,6 +54,9 @@ export interface Rec {
   picked: boolean;
 }
 
+/** 交通方式 */
+export type Mode = 'drive' | 'walk' | 'bike' | 'transit' | 'ferry' | 'flight';
+
 export interface Day {
   id: string;
   title: string;
@@ -63,6 +66,10 @@ export interface Day {
   driveHours: number;
   /** 途经点 / 景点，每行一个 */
   stops: string[];
+  /** 当天默认交通方式，缺省为自驾 */
+  mode?: Mode;
+  /** 单独指定某一段的交通方式：键为该段到达点的名称 */
+  legModes?: Record<string, Mode>;
   accommodation: Accommodation | null;
   /** 住宿推荐 */
   stayOptions: Rec[];

@@ -246,3 +246,22 @@ button.ai-btn.big { padding: 6px 14px; font-size: 15px; border-radius: 10px; }
 .cmp-old { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
 .reason { margin-top: 4px; color: var(--accent); }
 .sticky-actions { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0; border-top: 1px solid var(--border); }
+
+/* ---------- 交通方式 ---------- */
+.mode-pin { width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); font-size: 14px; line-height: 24px; text-align: center; }
+.map-note.warn { color: var(--warn); border-color: var(--warn); }
+.map-legend {
+  position: absolute; right: 8px; top: 8px; z-index: 500; display: grid; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 12px;
+}
+.lg { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--text); vertical-align: middle; }
+.lg-walk { border-top-style: dotted; }
+.lg-bike, .lg-flight { border-top-style: dashed; }
+.lg-transit { border-top: 3px dashed var(--text); }
+.lg-ferry { border-top: 3px dashed #0284c7; }
+.mode-editor { display: grid; gap: 6px; }
+.mode-editor summary { cursor: pointer; color: var(--accent); }
+.legs select { width: auto; max-width: 55%; padding: 4px 6px; }
+.route-check { background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 4px; }
+.seg-pill { display: inline-block; margin: 0 6px 4px 0; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); }
+.warn-text { color: var(--warn); }

@@ -81,40 +81,6 @@ export function useWiki(title?: string): WikiInfo | null {
   return info;
 }
 
-/* ---------- 路线 ---------- */
-
-export interface RouteInfo {
-  path: [number, number][];
-  km: number;
-  hours: number;
-}
-
-export async function fetchRoute(points: Place[]): Promise<RouteInfo | null> {
-  if (points.length < 2) return null;
-  const coords = points.map((p) => `${p.lng.toFixed(4)},${p.lat.toFixed(4)}`).join(';');
-  const key = 'route:' + coords;
-  const cached = cacheGet<RouteInfo>(key);
-  if (cached) return cached;
-  try {
-    const r = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coords}?overview=simplified&geometries=geojson`,
-    );
-    if (!r.ok) return null;
-    const j = await r.json();
-    const route = j.routes?.[0];
-    if (!route) return null;
-    const info: RouteInfo = {
-      path: route.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]),
-      km: Math.round(route.distance / 1000),
-      hours: Math.round((route.duration / 3600) * 10) / 10,
-    };
-    cacheSet(key, info);
-    return info;
-  } catch {
-    return null;
-  }
-}
-
 /* ---------- 地点查询 ---------- */
 
 export async function geocode(name: string): Promise<{ lat: number; lng: number } | null> {

@@ -1,4 +1,5 @@
 import type { Category, Trip } from './types';
+import { isDriveDay } from './route';
 
 export function addDays(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -53,7 +54,9 @@ export function summarize(trip: Trip): Summary {
 
   const totalKm = trip.days.reduce((s, d) => s + (d.km || 0), 0);
   const driveHours = trip.days.reduce((s, d) => s + (d.driveHours || 0), 0);
-  byCategory.fuel = fuelCost(totalKm, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice);
+  // 油费只算自驾的日子（步行、公交、飞机等不耗油）
+  const driveKm = trip.days.filter(isDriveDay).reduce((s, d) => s + (d.km || 0), 0);
+  byCategory.fuel = fuelCost(driveKm, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice);
 
   let nights = 0;
   for (const d of trip.days) {
@@ -91,10 +94,3 @@ export function summarize(trip: Trip): Summary {
   };
 }
 
-/** 生成 Google 地图导航链接（含途经点） */
-export function mapsUrl(from: string, to: string, stops: string[]): string {
-  const p = new URLSearchParams({ api: '1', origin: from, destination: to, travelmode: 'driving' });
-  const wp = stops.filter((s) => s.trim());
-  if (wp.length) p.set('waypoints', wp.join('|'));
-  return 'https://www.google.com/maps/dir/?' + p.toString();
-}

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Category, Day, Place, Rec, Trip } from './types';
 import { CATEGORY_LABELS } from './types';
-import { addDays, formatDate, fuelCost, mapsUrl, money, summarize } from './calc';
+import { addDays, formatDate, fuelCost, money, summarize } from './calc';
 import { createBlankTrip, createDefaultTrip, duplicateTrip, TEMPLATES } from './defaultTrip';
 import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './storage';
 import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
-import { fetchRoute, findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
+import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
+import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
+import type { Mode } from './types';
 
 type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
@@ -342,7 +344,7 @@ function DayCard({
     });
   };
 
-  const fuel = fuelCost(day.km, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice);
+  const fuel = isDriveDay(day) ? fuelCost(day.km, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
   const acc = day.accommodation;
 
   return (
@@ -361,8 +363,12 @@ function DayCard({
         <>
           <p>
             {leg(day)}
-            <span className="muted"> · {day.km} km · 约 {day.driveHours} 小时 · 油费 {money(fuel)}</span>
+            <span className="muted">
+              {' '}
+              · {day.km} km · 约 {day.driveHours} 小时{fuel > 0 ? ` · 油费 ${money(fuel)}` : ''}
+            </span>
           </p>
+          <p className="small">{modeSummary(day)}</p>
           {day.stops.length > 0 && <p className="muted">途经：{day.stops.map(short).join(' · ')}</p>}
           {acc && (
             <p>
@@ -374,7 +380,7 @@ function DayCard({
           {day.notes && <p className="notes">{day.notes}</p>}
           <div className="row wrap gap">
             <button className="link" onClick={showOnMap}>在地图上看</button>
-            <a className="link" href={mapsUrl(day.from, day.to, day.stops)} target="_blank" rel="noreferrer">
+            <a className="link" href={googleDirections(day)} target="_blank" rel="noreferrer">
               Google 地图导航 ↗
             </a>
           </div>
@@ -401,7 +407,7 @@ function DayCard({
             <Field label="里程 (km)">
               <NumInput value={day.km} onChange={(v) => set((d) => void (d.km = v))} />
             </Field>
-            <Field label="驾驶时间 (小时)">
+            <Field label="路上时间 (小时)">
               <NumInput value={day.driveHours} step={0.5} onChange={(v) => set((d) => void (d.driveHours = v))} />
             </Field>
           </div>
@@ -412,6 +418,7 @@ function DayCard({
               onChange={(e) => set((d) => void (d.stops = e.target.value.split('\n')))}
             />
           </Field>
+          <ModeEditor day={day} set={set} />
           <PlaceTools trip={trip} day={day} update={update} set={set} />
           <label className="check">
             <input
@@ -572,8 +579,8 @@ function NewTripForm({
     });
     // 按真实路线填入每天里程和驾驶时间（离线时保持 0，之后可在编辑里重算）
     for (const d of t.days) {
-      const r = await fetchRoute(dayPlaces(t, d));
-      if (r) Object.assign(d, { km: r.km, driveHours: r.hours });
+      const r = await routeDay(t, d);
+      if (r.segments.length && !r.failed) Object.assign(d, { km: r.km, driveHours: r.hours });
     }
     setBusy(false);
     onCreate(t);
@@ -681,6 +688,7 @@ function MapView({
             第 {focus! + 1} 天 · {formatDate(addDays(trip.startDate, focus!))} · {day.km} km · 约 {day.driveHours} 小时
           </div>
           <h2>{day.title}</h2>
+          <RouteCheck trip={trip} day={day} update={update} />
           <DayGuide trip={trip} day={day} index={focus!} update={update} />
           <button className="link" onClick={() => goTo('itinerary')}>去行程页编辑 →</button>
         </section>
@@ -693,6 +701,102 @@ function MapView({
         </section>
       )}
     </>
+  );
+}
+
+/** 交通方式：当天默认 + 每一段单独指定 */
+function ModeEditor({ day, set }: { day: Day; set: (mutate: (d: Day) => void) => void }) {
+  const names = dayPointNames(day);
+  const setLeg = (to: string, v: string) =>
+    set((d) => {
+      const m = { ...(d.legModes ?? {}) };
+      if (v === '') delete m[to];
+      else m[to] = v as Mode;
+      d.legModes = Object.keys(m).length ? m : undefined;
+    });
+  return (
+    <div className="mode-editor">
+      <Field label="当天主要交通方式">
+        <select value={dayMode(day)} onChange={(e) => set((d) => void (d.mode = e.target.value as Mode))}>
+          {MODE_KEYS.map((m) => (
+            <option key={m} value={m}>{MODES[m].icon} {MODES[m].label}</option>
+          ))}
+        </select>
+      </Field>
+      {names.length > 1 && (
+        <details>
+          <summary className="small">分段设置（例如：开车到市区，再坐电车去海滩）</summary>
+          <ul className="plain legs">
+            {names.slice(1).map((to, k) => (
+              <li key={to + k} className="row small">
+                <span className="grow">{short(names[k])} → {short(to)}</span>
+                <select value={day.legModes?.[to] ?? ''} onChange={(e) => setLeg(to, e.target.value)}>
+                  <option value="">同当天（{MODES[dayMode(day)].icon}）</option>
+                  {MODE_KEYS.map((m) => (
+                    <option key={m} value={m}>{MODES[m].icon} {MODES[m].label}</option>
+                  ))}
+                </select>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {!isDriveDay(day) && <p className="muted small">这一天不按自驾计算油费；交通票价请在「费用」里添加。</p>}
+    </div>
+  );
+}
+
+/** 地图页：用真实路线核对当天填写的里程 / 时间 */
+function RouteCheck({ trip, day, update }: { trip: Trip; day: Day; update: Update }) {
+  const [r, setR] = useState<Awaited<ReturnType<typeof routeDay>> | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setR(null);
+    routeDay(trip, day).then((x) => alive && setR(x));
+    return () => {
+      alive = false;
+    };
+    // 只在路线相关字段变化时重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day.from, day.to, day.stops.join('|'), day.mode, JSON.stringify(day.legModes), trip.places.length, retry]);
+  if (!r || !r.segments.length) return null;
+  const off = Math.abs(r.km - day.km) > Math.max(10, day.km * 0.15);
+  return (
+    <div className="route-check small">
+      <div>
+        {r.segments.map((s, i) => (
+          <span key={i} className="seg-pill">
+            {MODES[s.mode].icon} {s.km} km · {s.hours} 小时{s.routed ? '' : '（示意）'}
+          </span>
+        ))}
+      </div>
+      <div className="muted">
+        地图路线合计 {r.km} km · 约 {r.hours} 小时
+        {r.failed > 0 && (
+          <>
+            ；{r.failed} 段未能获取真实道路，按直线估算{' '}
+            <button className="link" onClick={() => setRetry((n) => n + 1)}>重试</button>
+          </>
+        )}
+      </div>
+      {off && (
+        <div>
+          <span className="warn-text">与填写的 {day.km} km / {day.driveHours} 小时不一致</span>{' '}
+          <button
+            className="mini"
+            onClick={() =>
+              update((t) => {
+                const d = t.days.find((x) => x.id === day.id);
+                if (d) Object.assign(d, { km: r.km, driveHours: r.hours });
+              })
+            }
+          >
+            用地图数据更新
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -972,13 +1076,18 @@ function PlaceTools({
 
   const calc = async () => {
     setBusy('route');
-    const r = await fetchRoute(dayPlaces(trip, day));
+    const r = await routeDay(trip, day);
     setBusy('');
-    if (!r) return alert('无法获取路线（可能离线，或有地点缺少坐标）。');
+    if (!r.segments.length) return alert('无法计算路线：至少需要两个有坐标的地点。');
+    if (r.failed) alert(`有 ${r.failed} 段未能获取真实道路（可能离线），已按直线距离估算。`);
     set((d) => {
       d.km = r.km;
       d.driveHours = r.hours;
     });
+  };
+  const reorder = () => {
+    const next = orderStops(trip, day);
+    set((d) => void (d.stops = next));
   };
 
   return (
@@ -998,9 +1107,14 @@ function PlaceTools({
           ))}
         </p>
       )}
-      <button className="mini" disabled={!!busy} onClick={calc}>
-        {busy === 'route' ? '计算中…' : '按地图路线自动计算里程和时间'}
-      </button>
+      <div className="row wrap">
+        <button className="mini" disabled={!!busy} onClick={calc}>
+          {busy === 'route' ? '计算中…' : '按地图路线自动计算里程和时间'}
+        </button>
+        <button className="mini" disabled={day.stops.filter((x) => x.trim()).length < 2} onClick={reorder}>
+          途经点按顺路排序
+        </button>
+      </div>
     </div>
   );
 }

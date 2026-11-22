@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, fuelCost, mapsUrl, summarize } from './calc';
+import { addDays, fuelCost, summarize } from './calc';
 import { createDefaultTrip } from './defaultTrip';
 
 describe('calc', () => {
@@ -34,10 +34,7 @@ describe('calc', () => {
     expect(s.unpaid).toBeCloseTo(s.total - s.paid);
   });
 
-  it('mapsUrl encodes waypoints', () => {
-    const url = mapsUrl('Melbourne VIC', 'Lorne VIC', ['Torquay VIC']);
-    expect(url).toContain('waypoints=Torquay+VIC');
-  });
+
 });
 
 import { migrateTrip } from './defaultTrip';

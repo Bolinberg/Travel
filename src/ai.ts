@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Day, Place, Rec, Trip } from './types';
 import { addDays } from './calc';
 import { findPlace } from './geo';
+import { insertStop } from './route';
 import { newId } from './id';
 
 /*
@@ -455,7 +456,7 @@ export function applyResult(trip: Trip, dayId: string, r: AiResult): { sights: n
       trip.places.push(p);
     }
     if (!onRoute.has(norm(s.name))) {
-      day.stops = [...day.stops.filter((x) => x.trim()), s.name.trim()];
+      day.stops = insertStop(trip, day, s.name.trim());
       onRoute.add(norm(s.name));
       sights++;
     }
