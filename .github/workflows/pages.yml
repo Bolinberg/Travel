@@ -1,8 +1,8 @@
-name: Deploy to GitHub Pages
+name: Deploy App to GitHub Pages
 
+# 推送到默认分支时自动部署前端页面（后端需另外部署，见 README「家庭同步」）
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -10,8 +10,13 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   build:
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +26,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - run: npx tsc && npx vite build
+        env:
+          # 在仓库 Settings → Secrets and variables → Actions → Variables 里设置 SYNC_SERVER（后端地址）
+          VITE_SYNC_SERVER: ${{ vars.SYNC_SERVER }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

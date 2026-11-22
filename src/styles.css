@@ -287,3 +287,12 @@ button.ai-btn.big { padding: 6px 14px; font-size: 15px; border-radius: 10px; }
 .cmp-table td.best { color: var(--good); font-weight: 600; }
 .multi h3 { font-size: 15px; margin: 16px 0 8px; }
 .adopt { margin-top: 10px; }
+
+/* ---------- 同步 ---------- */
+.top-actions { display: flex; gap: 6px; align-items: center; flex: none; }
+.sync-badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; }
+.sync-badge.s-ok { color: var(--good); border-color: currentColor; }
+.sync-badge.s-syncing { color: var(--accent); }
+.sync-badge.s-offline, .sync-badge.s-error { color: var(--warn); border-color: currentColor; }
+.card.join { border-color: var(--accent); border-width: 2px; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }

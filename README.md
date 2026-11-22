@@ -13,7 +13,7 @@
 | 清单 | 出发前 / 行李 / 路上注意 分组勾选，可自定义 |
 | 设置 | 出发日期、人数、预算、车辆油耗与油价、餐饮标准；导出/导入 JSON（和家人共享）、打印/存 PDF |
 
-数据保存在浏览器本地（localStorage），不需要账号和服务器。
+数据默认保存在浏览器本地（localStorage）；部署后端后可开启「家庭同步」，多设备共用。
 
 联网时 App 会在设备上调用以下免费服务（结果缓存）：OpenStreetMap 地图瓦片、OSRM 驾车路线、维基百科景点照片、Nominatim 地点坐标查询。离线时路线显示为虚线直连。
 
@@ -71,20 +71,66 @@
 
 所有里程、车程、住宿价格均为**估算值**，请按实际导航和预订结果修改。
 
+## 家庭同步（多设备）
+
+一人「创建家庭空间」，把邀请链接发给家人；家人打开链接、填个称呼就加入。之后大家看到和编辑的是同一份行程：
+
+- 修改约 2 秒后上传；其他设备每 15 秒、切回 App、恢复联网时拉取。右上角 ☁️ 显示同步状态。
+- **不会互相覆盖**：服务器按版本号做乐观并发控制。两人同时改了同一个行程时，以先上传的为准，另一台设备未上传的内容自动存进「方案」历史（标注「同步冲突」），随时可以对比或采用。
+- 无需注册账号：邀请链接里的密钥就是凭证（服务器只存它的 SHA-256）。链接发错了可以「更换密钥」，旧链接和旧设备立即失效。
+- 离线时照常使用，联网后自动补传。
+
+后端代码在 `server/`（Hono + Node 22 自带的 SQLite），客户端在 `src/sync.ts`、`src/useSync.ts`、`src/SyncUI.tsx`。
+
+## 部署
+
+### 方案 A（推荐）：一个服务同时提供 App 和同步
+
+后端也托管 App 页面，家人只需要打开同一个网址。需要一个能长期运行、有持久化磁盘的地方：
+
+**Fly.io**（澳洲有悉尼机房）：
+
+```bash
+fly launch --no-deploy        # 按提示选择/修改 app 名称（fly.toml 已写好）
+fly volumes create travel_data --size 1 --region syd
+fly deploy
+```
+
+部署后访问 `https://<app 名称>.fly.dev`，在「设置 → 家庭同步」里服务器地址会自动填好，创建家庭空间即可。家庭用量很小，费用请以 Fly.io 官网为准。
+
+**任意支持 Docker 的服务器 / NAS**：
+
+```bash
+docker build -t travel-planner .
+docker run -d -p 8787:8787 -v travel-data:/data --name travel travel-planner
+```
+
+对外访问请配 HTTPS（例如放在 Caddy / Nginx 后面），浏览器才允许从 https 页面调用。
+
+### 方案 B：App 放 GitHub Pages，后端放别处
+
+GitHub Pages 只能托管静态页面，**不能运行后端**；同步仍需要按方案 A 部署一个后端。之后：
+
+1. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**（只需一次）。
+2. （可选）**Settings → Secrets and variables → Actions → Variables** 新建 `SYNC_SERVER`，值为后端地址（如 `https://travel-planner-family.fly.dev`），页面里会自动填好服务器地址。
+3. 推送到默认分支后 `.github/workflows/pages.yml` 自动构建并发布到 `https://<用户名>.github.io/<仓库名>/`。
+
+后端必须是 https 地址（GitHub Pages 是 https，浏览器会拦截调用 http 的请求）。API 默认允许跨域（用 Bearer 密钥鉴权、不用 Cookie）；如需限制，设置环境变量 `CORS_ORIGIN=https://<用户名>.github.io`。
+
 ## 开发
 
 ```bash
 npm install
-npm run dev      # 本地开发
-npm test         # 费用计算单元测试
-npm run build    # 打包成单个 dist/index.html，可直接打开或发到手机
+npm run dev      # 前端开发服务器
+npm test         # 单元测试 + 同步服务端/客户端集成测试
+npm run build    # 打包前端（dist/）和后端（dist-server/）
+npm start        # 启动后端（同时托管 dist/），默认 http://localhost:8787
 ```
 
-推送到 `main` 后，`.github/workflows/pages.yml` 会部署到 GitHub Pages（需在仓库 Settings → Pages 里把 Source 设为 GitHub Actions）。
+需要 Node.js 22.13 或以上（使用内置的 `node:sqlite`）。环境变量：`PORT`、`DB_PATH`（默认 `./data/travel.db`）、`HOST`、`CORS_ORIGIN`。
 
 ## 后续可做
 
-- 更多目的地模板；用 AI 根据行程自动生成景点/住宿/餐饮推荐
-- 家人多设备实时同步（需要后端或云存储）
+- 更多目的地模板；AI 请求改由后端代理（家人无需各自的 API Key）
 - 旅途中实际记账 vs 预算对比、AA 分账
 - 天气、景点开放时间、加油站提醒

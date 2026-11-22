@@ -9,6 +9,9 @@ import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
 import Versions from './Versions';
+import { useSync } from './useSync';
+import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
+import { parseInvite } from './sync';
 import { addVersion, restoreVersion, snapshot } from './versions';
 import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
@@ -39,6 +42,13 @@ export default function App() {
   const trip = store.trips.find((t) => t.id === store.activeId) ?? store.trips[0];
   const [tab, setTab] = useState<Tab>('overview');
   const [showTrips, setShowTrips] = useState(false);
+  const sync = useSync(store, setStore);
+  // 打开邀请链接（#join=…）时提示加入
+  const [invite, setInvite] = useState(() => (typeof location !== 'undefined' ? parseInvite(location.hash) : null));
+  const closeInvite = () => {
+    setInvite(null);
+    history.replaceState(null, '', location.pathname + location.search);
+  };
   const [focus, setFocus] = useState<number | null>(null);
   const showOnMap = (i: number | null) => {
     setFocus(i);
@@ -110,9 +120,12 @@ export default function App() {
       <header className="top">
         <div className="row between">
           <h1>{trip.name}</h1>
-          <button className="mini" onClick={() => setShowTrips(!showTrips)}>
-            {showTrips ? '关闭' : `我的行程 (${store.trips.length})`}
-          </button>
+          <div className="top-actions">
+            <SyncBadge state={sync.state} onClick={() => setTab('settings')} />
+            <button className="mini" onClick={() => setShowTrips(!showTrips)}>
+              {showTrips ? '关闭' : `我的行程 (${store.trips.length})`}
+            </button>
+          </div>
         </div>
         <p className="muted">
           {formatDate(trip.startDate)} – {formatDate(addDays(trip.startDate, Math.max(trip.days.length - 1, 0)))}
@@ -120,6 +133,9 @@ export default function App() {
           {trip.adults} 大 {trip.children} 小
         </p>
       </header>
+      {invite && sync.cfg?.key !== invite.key && (
+        <JoinPrompt invite={invite} store={store} setCfg={sync.setCfg} onDone={closeInvite} />
+      )}
       {showTrips && (
         <TripsPanel
           store={store}
@@ -184,7 +200,11 @@ export default function App() {
             onDelete={(id) => update((d) => void (d.versions = d.versions?.filter((x) => x.id !== id)))}
           />
         )}
-        {tab === 'settings' && <Settings trip={trip} update={update} onImport={addTrip} />}
+        {tab === 'settings' && (
+          <Settings trip={trip} update={update} onImport={addTrip}>
+            <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
+          </Settings>
+        )}
       </main>
     </div>
   );
@@ -1335,7 +1355,17 @@ function Checklist({ trip, update }: { trip: Trip; update: Update }) {
 
 /* ---------------- 设置 ---------------- */
 
-function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onImport: (t: Trip) => void }) {
+function Settings({
+  trip,
+  update,
+  onImport,
+  children,
+}: {
+  trip: Trip;
+  update: Update;
+  onImport: (t: Trip) => void;
+  children?: React.ReactNode;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const importFile = async (f: File) => {
@@ -1352,6 +1382,7 @@ function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onIm
 
   return (
     <>
+      {children}
       <section className="card form">
         <h2>基本信息</h2>
         <Field label="行程名称">
@@ -1417,7 +1448,7 @@ function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onIm
       <section className="card">
         <h2>数据</h2>
         <p className="muted small">
-          数据只保存在本设备浏览器中。要和家人共享，请「导出」后把文件发给对方，对方「导入」会作为一个新行程加入。
+          未开启家庭同步时，数据只保存在本设备浏览器中。也可以「导出」文件发给家人，对方「导入」会作为一个新行程加入。
         </p>
         <div className="row wrap">
           <button className="primary" onClick={() => downloadJson(trip)}>导出 JSON</button>

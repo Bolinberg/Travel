@@ -1,0 +1,24 @@
+# Fly.io 部署配置：fly launch --no-deploy 后修改 app 名称，再 fly volumes create travel_data --size 1 && fly deploy
+app = "travel-planner-family"
+primary_region = "syd"
+
+[build]
+
+[env]
+  PORT = "8787"
+  DB_PATH = "/data/travel.db"
+
+[mounts]
+  source = "travel_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
