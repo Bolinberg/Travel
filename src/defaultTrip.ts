@@ -283,14 +283,14 @@ import { createGrandTrip, createKangarooIslandTrip, createLoopTrip, createSevenD
 
 export const TEMPLATES = [
   {
-    key: 'mel-blue-7',
-    label: '7 天往返：墨尔本 → 蓝湖（住）→ 阿德莱德（熊猫、博物馆）→ 袋鼠岛 → 墨尔本（前两天各约 5.5 小时）',
-    create: createSevenDayTrip,
-  },
-  {
     key: 'mel-grand-8',
     label: '8 天往返：大洋路 → 甘比尔山 → 阿德莱德（熊猫、博物馆）→ 袋鼠岛 → 墨尔本（每天车程 5 小时内）',
     create: createGrandTrip,
+  },
+  {
+    key: 'mel-blue-7',
+    label: '7 天往返：墨尔本 → 蓝湖（住）→ 阿德莱德（熊猫、博物馆）→ 袋鼠岛 → 墨尔本（前两天各约 5.5 小时）',
+    create: createSevenDayTrip,
   },
   {
     key: 'mel-loop-6',
