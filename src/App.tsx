@@ -17,18 +17,48 @@ import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from '.
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
 
-type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'versions' | 'settings';
+type Tab = 'itinerary' | 'map' | 'costs' | 'checklist' | 'versions' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
 
+/** 线性图标（24×24，描边随文字颜色） */
+const ICONS: Record<string, React.ReactNode> = {
+  itinerary: <path d="M6 3v18M6 7h9a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h9" />,
+  map: <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 0v14m6-12v14" />,
+  costs: <path d="M3 7h18v12H3zM3 11h18M7 15h4" />,
+  checklist: <path d="m4 7 2 2 4-4M4 16l2 2 4-4M13 7h7M13 16h7" />,
+  versions: <path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />,
+  settings: (
+    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L14.5 3h-5l-.4 2.6a7.5 7.5 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2 1.2l.4 2.6h5l.4-2.6a7.5 7.5 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z" />
+  ),
+};
+export function Icon({ name }: { name: string }) {
+  return (
+    <svg className="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  );
+}
+
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: '概览' },
-  { key: 'map', label: '地图' },
   { key: 'itinerary', label: '行程' },
+  { key: 'map', label: '地图' },
   { key: 'costs', label: '费用' },
   { key: 'checklist', label: '清单' },
   { key: 'versions', label: '方案' },
-  { key: 'settings', label: '设置' },
 ];
+
+/** 宽屏（≥ 980px）时行程旁边常驻地图 */
+function useWide() {
+  const q = '(min-width: 980px)';
+  const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(q).matches);
+  useEffect(() => {
+    const m = matchMedia(q);
+    const on = () => setWide(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
 
 function initialStore(): Store {
   const s = loadStore();
@@ -40,7 +70,8 @@ function initialStore(): Store {
 export default function App() {
   const [store, setStore] = useState<Store>(initialStore);
   const trip = store.trips.find((t) => t.id === store.activeId) ?? store.trips[0];
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('itinerary');
+  const wide = useWide();
   const [showTrips, setShowTrips] = useState(false);
   const sync = useSync(store, setStore);
   // 打开邀请链接（#join=…）时提示加入
@@ -52,6 +83,8 @@ export default function App() {
   const [focus, setFocus] = useState<number | null>(null);
   const showOnMap = (i: number | null) => {
     setFocus(i);
+    // 宽屏时旁边就有地图，不用切页
+    if (wide && tab === 'itinerary') return;
     setTab('map');
     window.scrollTo(0, 0);
   };
@@ -76,7 +109,7 @@ export default function App() {
   const addTrip = (t: Trip) => {
     setStore((s) => ({ activeId: t.id, trips: [...s.trips, t] }));
     setShowTrips(false);
-    setTab('overview');
+    setTab('itinerary');
     setFocus(null);
   };
   // 调整天数后可撤销（只保留最近一次）
@@ -102,7 +135,7 @@ export default function App() {
     setUndo(null);
     setStore((s) => ({ ...s, activeId: id }));
     setShowTrips(false);
-    setTab('overview');
+    setTab('itinerary');
     setFocus(null);
   };
   const deleteTrip = (id: string) =>
@@ -115,23 +148,26 @@ export default function App() {
       return { activeId: s.activeId === id ? trips[0].id : s.activeId, trips };
     });
 
+  const sideMap = wide && tab === 'itinerary';
+
   return (
-    <div className="app">
-      <header className="top">
-        <div className="row between">
-          <h1>{trip.name}</h1>
-          <div className="top-actions">
-            <SyncBadge state={sync.state} onClick={() => setTab('settings')} />
-            <button className="mini" onClick={() => setShowTrips(!showTrips)}>
-              {showTrips ? '关闭' : `我的行程 (${store.trips.length})`}
-            </button>
-          </div>
+    <div className={`app tab-${tab}${sideMap ? ' with-side' : ''}`}>
+      <header className="masthead">
+        <button className="trip-switch" onClick={() => setShowTrips(!showTrips)} aria-expanded={showTrips}>
+          <span className="trip-switch-name">{trip.name}</span>
+          <span className="trip-switch-count">{store.trips.length > 1 ? `共 ${store.trips.length} 个行程` : '切换行程'}</span>
+        </button>
+        <div className="masthead-actions">
+          <SyncBadge state={sync.state} onClick={() => setTab('settings')} />
+          <button
+            className={`icon-btn${tab === 'settings' ? ' on' : ''}`}
+            aria-label="设置"
+            title="设置"
+            onClick={() => setTab('settings')}
+          >
+            <Icon name="settings" />
+          </button>
         </div>
-        <p className="muted">
-          {formatDate(trip.startDate)} – {formatDate(addDays(trip.startDate, Math.max(trip.days.length - 1, 0)))}
-          {' · '}
-          {trip.adults} 大 {trip.children} 小
-        </p>
       </header>
       {invite && sync.cfg?.key !== invite.key && (
         <JoinPrompt invite={invite} store={store} setCfg={sync.setCfg} onDone={closeInvite} />
@@ -145,162 +181,207 @@ export default function App() {
           onDelete={deleteTrip}
         />
       )}
-      <nav className="tabs" role="tablist">
+      <nav className="dock" aria-label="主要页面">
         {TABS.map((t) => (
           <button
             key={t.key}
-            role="tab"
-            aria-selected={tab === t.key}
-            className={tab === t.key ? 'active' : ''}
-            onClick={() => setTab(t.key)}
+            aria-current={tab === t.key ? 'page' : undefined}
+            className={tab === t.key ? 'on' : ''}
+            onClick={() => {
+              setTab(t.key);
+              window.scrollTo(0, 0);
+            }}
           >
-            {t.label}
+            <Icon name={t.key} />
+            <span>{t.label}</span>
           </button>
         ))}
       </nav>
-      <main>
-        {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} update={update} />}
-        {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
-        {tab === 'itinerary' && (
-          <>
-            {undo && undo.trip.id === trip.id && (
-              <section className="card banner small">
-                <span>已调整行程：{undo.label}</span>
-                <button className="mini" onClick={undoReplan}>撤销</button>
-                <button className="icon" aria-label="关闭" onClick={() => setUndo(null)}>×</button>
-              </section>
-            )}
-            <Replan
-              key={trip.id + trip.days.length}
+      <div className="layout">
+        <main>
+          {tab === 'itinerary' && (
+            <>
+              <GuideSign trip={trip} />
+              <MissingBanner trip={trip} update={update} />
+              <TripStatus trip={trip} goTo={setTab} />
+              {undo && undo.trip.id === trip.id && (
+                <section className="notice">
+                  <span>已调整行程：{undo.label}</span>
+                  <button className="mini" onClick={undoReplan}>撤销</button>
+                  <button className="icon" aria-label="关闭" onClick={() => setUndo(null)}>×</button>
+                </section>
+              )}
+              <Replan
+                key={trip.id + trip.days.length}
+                trip={trip}
+                onApply={applyReplan}
+                onSave={(t, label) => update((d) => void addVersion(d, label, 'proposal', snapshot(t)))}
+              />
+              <Itinerary trip={trip} update={update} showOnMap={showOnMap} focus={sideMap ? focus : null} />
+            </>
+          )}
+          {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
+          {tab === 'costs' && <Costs trip={trip} update={update} />}
+          {tab === 'checklist' && <Checklist trip={trip} update={update} />}
+          {tab === 'versions' && (
+            <Versions
               trip={trip}
-              onApply={applyReplan}
-              onSave={(t, label) => update((d) => void addVersion(d, label, 'proposal', snapshot(t)))}
+              onSave={(label) => update((d) => void addVersion(d, label, 'manual'))}
+              onRestore={(id) => {
+                setUndo(null);
+                replaceTrip(restoreVersion(trip, id));
+                setTab('itinerary');
+                window.scrollTo(0, 0);
+              }}
+              onRename={(id, label) =>
+                update((d) => {
+                  const v = d.versions?.find((x) => x.id === id);
+                  if (v) v.label = label;
+                })
+              }
+              onDelete={(id) => update((d) => void (d.versions = d.versions?.filter((x) => x.id !== id)))}
             />
-            <Itinerary trip={trip} update={update} showOnMap={showOnMap} />
-          </>
+          )}
+          {tab === 'settings' && (
+            <Settings trip={trip} update={update} onImport={addTrip}>
+              <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
+            </Settings>
+          )}
+        </main>
+        {sideMap && (
+          <aside className="side-map" aria-label="路线地图">
+            <div className="side-map-head">
+              <span>{focus === null ? '全程路线' : `第 ${focus + 1} 天  ${leg(trip.days[focus] ?? trip.days[0])}`}</span>
+              {focus !== null && (
+                <button className="link" onClick={() => setFocus(null)}>看全程</button>
+              )}
+            </div>
+            <TripMap trip={trip} focus={focus} height={0} />
+          </aside>
         )}
-        {tab === 'costs' && <Costs trip={trip} update={update} />}
-        {tab === 'checklist' && <Checklist trip={trip} update={update} />}
-        {tab === 'versions' && (
-          <Versions
-            trip={trip}
-            onSave={(label) => update((d) => void addVersion(d, label, 'manual'))}
-            onRestore={(id) => {
-              setUndo(null);
-              replaceTrip(restoreVersion(trip, id));
-              setTab('overview');
-              window.scrollTo(0, 0);
-            }}
-            onRename={(id, label) =>
-              update((d) => {
-                const v = d.versions?.find((x) => x.id === id);
-                if (v) v.label = label;
-              })
-            }
-            onDelete={(id) => update((d) => void (d.versions = d.versions?.filter((x) => x.id !== id)))}
-          />
-        )}
-        {tab === 'settings' && (
-          <Settings trip={trip} update={update} onImport={addTrip}>
-            <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
-          </Settings>
-        )}
-      </main>
+      </div>
     </div>
   );
 }
 
-/* ---------------- 概览 ---------------- */
+/* ---------------- 路牌（行程概要） ---------------- */
 
-function Overview({
-  trip,
-  goTo,
-  showOnMap,
-  update,
-}: {
-  trip: Trip;
-  goTo: (t: Tab) => void;
-  showOnMap: (i: number | null) => void;
-  update: Update;
-}) {
+/** 路牌上列出的地点：沿途过夜地 + 终点，附累计里程；太多时保留首尾和停留最久的地方 */
+function signRows(trip: Trip): { place: string; km: number; nights: number }[] {
+  const rows: { place: string; km: number; nights: number }[] = [];
+  let km = 0;
+  trip.days.forEach((d, i) => {
+    km += d.km || 0;
+    const last = i === trip.days.length - 1;
+    if (!d.accommodation && !last) return;
+    const place = short(d.to);
+    const prev = rows[rows.length - 1];
+    if (prev && prev.place === place) {
+      prev.nights += d.accommodation ? 1 : 0;
+      return;
+    }
+    rows.push({ place, km, nights: d.accommodation ? 1 : 0 });
+  });
+  if (rows.length <= 5) return rows;
+  const longest = rows.slice(2, -2).reduce((a, b) => (b.nights > a.nights ? b : a), rows[2]);
+  return [rows[0], rows[1], longest, rows[rows.length - 2], rows[rows.length - 1]];
+}
+
+/** 「12月19日 至 27日」，跨月时写全 */
+function dateRange(start: string, end: string): string {
+  const [, m1, d1] = start.split('-').map(Number);
+  const [, m2, d2] = end.split('-').map(Number);
+  if (start === end) return `${m1}月${d1}日`;
+  return m1 === m2 ? `${m1}月${d1}日 至 ${d2}日` : `${m1}月${d1}日 至 ${m2}月${d2}日`;
+}
+
+function GuideSign({ trip }: { trip: Trip }) {
   const s = useMemo(() => summarize(trip), [trip]);
-  const done = trip.checklist.filter((c) => c.done).length;
-  const pct = trip.budget > 0 ? Math.min(100, (s.total / trip.budget) * 100) : 0;
-  const over = s.budgetLeft < 0;
-
+  const rows = signRows(trip);
+  const end = addDays(trip.startDate, Math.max(trip.days.length - 1, 0));
   return (
-    <>
-      <MissingBanner trip={trip} update={update} />
-      <section className="stats">
-        <Stat label="天数" value={`${s.days} 天 ${s.nights} 晚`} />
-        <Stat label="总里程" value={`${s.totalKm.toLocaleString()} km`} />
-        <Stat label="驾驶时间" value={`约 ${s.driveHours} 小时`} />
-        <Stat label="预计总花费" value={money(s.total)} />
-      </section>
-
-      <section className="card">
-        <div className="row between">
-          <h2>预算</h2>
-          <span className={over ? 'bad' : 'good'}>
-            {over ? `超出 ${money(-s.budgetLeft)}` : `剩余 ${money(s.budgetLeft)}`}
-          </span>
-        </div>
-        <div className="bar" aria-label="预算使用">
-          <div className={over ? 'fill over' : 'fill'} style={{ width: `${pct}%` }} />
-        </div>
-        <p className="muted">
-          预计 {money(s.total)} / 预算 {money(trip.budget)} · 人均 {money(s.perPerson)} · 每天 {money(s.perDay)}
-        </p>
-        <p className="muted">
-          已付 {money(s.paid)} · 待付 {money(s.unpaid)}
-        </p>
-        <button className="link" onClick={() => goTo('costs')}>查看费用明细 →</button>
-      </section>
-
-      <section className="card">
-        <h2>待办提醒</h2>
-        <ul className="plain">
-          {s.unbooked > 0 && (
-            <li>
-              🏨 还有 <b>{s.unbooked}</b> 晚住宿未预订{' '}
-              <button className="link" onClick={() => goTo('itinerary')}>去处理</button>
-            </li>
-          )}
-          <li>
-            ✅ 准备清单 {done}/{trip.checklist.length}{' '}
-            <button className="link" onClick={() => goTo('checklist')}>查看</button>
-          </li>
-        </ul>
-      </section>
-
-      <section className="card">
-        <div className="row between">
-          <h2>路线</h2>
-          <button className="link" onClick={() => showOnMap(null)}>大地图 →</button>
-        </div>
-        <TripMap trip={trip} focus={null} height={260} />
-        <ol className="route">
-          {trip.days.map((d, i) => (
-            <li key={d.id}>
-              <button className="link plainlink" onClick={() => showOnMap(i)}>
-                <span className="dot" style={{ background: dayColor(i) }} />
-                <span className="muted">D{i + 1}</span> {leg(d)}
-              </button>{' '}
-              <span className="muted">{d.km} km</span>
+    <section className="sign-wrap" aria-label="行程概要">
+      <div className="sign">
+        <div className="sign-from">{short(trip.days[0]?.from ?? '')} 出发</div>
+        <h1 className="sign-title">{trip.name}</h1>
+        <ul className="sign-rows">
+          {rows.map((r, i) => (
+            <li key={r.place + i}>
+              <span className="sign-place">{r.place}</span>
+              {r.nights > 1 && <span className="sign-nights">住 {r.nights} 晚</span>}
+              <span className="sign-km">{r.km.toLocaleString()}</span>
             </li>
           ))}
-        </ol>
-      </section>
-    </>
+        </ul>
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>日期</dt>
+          <dd>{dateRange(trip.startDate, end)}</dd>
+        </div>
+        <div>
+          <dt>人数</dt>
+          <dd>
+            {trip.adults} 大 {trip.children} 小
+          </dd>
+        </div>
+        <div>
+          <dt>行程</dt>
+          <dd>
+            {s.days} 天 {s.nights} 晚
+          </dd>
+        </div>
+        <div>
+          <dt>车程</dt>
+          <dd>约 {Math.round(s.driveHours)} 小时</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/** 预算 + 待办（原「概览」） */
+function TripStatus({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
+  const s = useMemo(() => summarize(trip), [trip]);
+  const done = trip.checklist.filter((c) => c.done).length;
+  const over = s.budgetLeft < 0;
+  const scale = Math.max(s.total, trip.budget, 1);
+  const cats = (Object.keys(CATEGORY_LABELS) as Category[]).filter((c) => s.byCategory[c] > 0);
+
   return (
-    <div className="stat">
-      <div className="muted small">{label}</div>
-      <div className="value">{value}</div>
-    </div>
+    <section className="status">
+      <button className="budget" onClick={() => goTo('costs')} aria-label="查看费用明细">
+        <div className="budget-line">
+          <span className="budget-total">{money(s.total)}</span>
+          <span className={over ? 'budget-delta bad' : 'budget-delta'}>
+            {over ? `超出预算 ${money(-s.budgetLeft)}` : `预算内，还剩 ${money(s.budgetLeft)}`}
+          </span>
+        </div>
+        <div className="meter" role="img" aria-label={`预计花费 ${money(s.total)}，预算 ${money(trip.budget)}`}>
+          {cats.map((c) => (
+            <span key={c} className={`seg c-${c}`} style={{ width: `${(s.byCategory[c] / scale) * 100}%` }} title={CATEGORY_LABELS[c]} />
+          ))}
+          {trip.budget > 0 && <span className="meter-limit" style={{ left: `${(trip.budget / scale) * 100}%` }} />}
+        </div>
+        <div className="budget-sub">
+          预算 {money(trip.budget)}，人均 {money(s.perPerson)}，每天 {money(s.perDay)}
+        </div>
+      </button>
+      <ul className="todo">
+        {s.unbooked > 0 && (
+          <li className="warn">
+            <span>
+              还有 <b>{s.unbooked}</b> 晚住宿没订
+            </span>
+          </li>
+        )}
+        <li>
+          <button className="link" onClick={() => goTo('checklist')}>
+            准备清单 {done}/{trip.checklist.length}
+          </button>
+        </li>
+      </ul>
+    </section>
   );
 }
 
@@ -314,10 +395,13 @@ function Itinerary({
   trip,
   update,
   showOnMap,
+  focus,
 }: {
   trip: Trip;
   update: Update;
   showOnMap: (i: number | null) => void;
+  /** 宽屏旁边地图正在看的那一天 */
+  focus: number | null;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
 
@@ -341,21 +425,25 @@ function Itinerary({
   };
 
   return (
-    <>
-      {trip.days.map((d, i) => (
-        <DayCard
-          key={d.id}
-          day={d}
-          index={i}
-          trip={trip}
-          update={update}
-          editing={editing === d.id}
-          setEditing={(on) => setEditing(on ? d.id : null)}
-          showOnMap={() => showOnMap(i)}
-        />
-      ))}
-      <button className="primary block" onClick={addDay}>+ 添加一天</button>
-    </>
+    <section className="strip" aria-label="逐日行程">
+      <h2 className="section-title">逐日行程</h2>
+      <ol className="strip-list">
+        {trip.days.map((d, i) => (
+          <DayCard
+            key={d.id}
+            day={d}
+            index={i}
+            trip={trip}
+            update={update}
+            editing={editing === d.id}
+            setEditing={(on) => setEditing(on ? d.id : null)}
+            showOnMap={() => showOnMap(i)}
+            focused={focus === i}
+          />
+        ))}
+      </ol>
+      <button className="add-day" onClick={addDay}>添加一天</button>
+    </section>
   );
 }
 
@@ -367,6 +455,7 @@ function DayCard({
   editing,
   setEditing,
   showOnMap,
+  focused,
 }: {
   day: Day;
   index: number;
@@ -375,6 +464,7 @@ function DayCard({
   editing: boolean;
   setEditing: (on: boolean) => void;
   showOnMap: () => void;
+  focused: boolean;
 }) {
   const set = (mutate: (d: Day) => void) =>
     update((t) => {
@@ -401,38 +491,71 @@ function DayCard({
   const fuel = isDriveDay(day) ? fuelCost(day.km, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
   const acc = day.accommodation;
 
+  const sightCount = dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from).length;
+  const last = index === trip.days.length - 1;
+
   return (
-    <section className="card day">
-      <div className="row between">
-        <div>
-          <div className="muted small">
-            第 {index + 1} 天 · {formatDate(addDays(trip.startDate, index))}
-          </div>
-          <h2>{day.title}</h2>
-        </div>
-        <button onClick={() => setEditing(!editing)}>{editing ? '完成' : '编辑'}</button>
+    <li
+      className={`leg${editing ? ' editing' : ''}${focused ? ' focused' : ''}${last ? ' last' : ''}`}
+      style={{ ['--c' as string]: dayColor(index) }}
+    >
+      <div className="rail" aria-hidden="true">
+        <span className="node">{index + 1}</span>
+        {day.km > 0 && <span className="rail-km">{day.km} km</span>}
       </div>
+      <div className="leg-body">
+        <div className="leg-head">
+          <div>
+            <div className="leg-date">{formatDate(addDays(trip.startDate, index))}</div>
+            <h3 className="leg-title">{day.title}</h3>
+          </div>
+          <button className="mini" onClick={() => setEditing(!editing)}>{editing ? '完成' : '编辑'}</button>
+        </div>
 
       {!editing ? (
         <>
-          <p>
-            {leg(day)}
-            <span className="muted">
-              {' '}
-              · {day.km} km · 约 {day.driveHours} 小时{fuel > 0 ? ` · 油费 ${money(fuel)}` : ''}
-            </span>
-          </p>
-          <p className="small">{modeSummary(day)}</p>
-          {day.stops.length > 0 && <p className="muted">途经：{day.stops.map(short).join(' · ')}</p>}
-          {acc && (
-            <p>
-              🏨 {acc.name} · {money(acc.cost)}{' '}
-              <span className={acc.booked ? 'tag good' : 'tag warn'}>{acc.booked ? '已订' : '未订'}</span>
-              {acc.paid && <span className="tag good">已付</span>}
+          <p className="leg-route">{leg(day)}</p>
+          <dl className="leg-facts">
+            <div>
+              <dt>里程</dt>
+              <dd>{day.km} km</dd>
+            </div>
+            <div>
+              <dt>路上</dt>
+              <dd className={day.driveHours > 6 ? 'warn-text' : ''}>约 {day.driveHours} 小时</dd>
+            </div>
+            {fuel > 0 && (
+              <div>
+                <dt>油费</dt>
+                <dd>{money(fuel)}</dd>
+              </div>
+            )}
+            <div>
+              <dt>交通</dt>
+              <dd>{modeSummary(day)}</dd>
+            </div>
+          </dl>
+          {day.stops.length > 0 && (
+            <p className="leg-via">
+              <span className="muted">途经</span> {day.stops.map(short).join('、')}
             </p>
           )}
-          {day.notes && <p className="notes">{day.notes}</p>}
-          <div className="row wrap gap">
+          {acc ? (
+            <div className={`leg-stay${acc.booked ? ' booked' : ''}`}>
+              <span className="leg-stay-label">今晚住</span>
+              <span className="leg-stay-name">{acc.name || '未填写'}</span>
+              <span className="leg-stay-cost">{money(acc.cost)}</span>
+              <span className={acc.booked ? 'flag ok' : 'flag warn'}>{acc.booked ? (acc.paid ? '已订已付' : '已订') : '未订'}</span>
+              {acc.notes && <span className="leg-stay-note">{acc.notes}</span>}
+            </div>
+          ) : (
+            <div className="leg-stay home">
+              <span className="leg-stay-label">今晚</span>
+              <span className="leg-stay-name">{last ? '到家' : '不住宿'}</span>
+            </div>
+          )}
+          {day.notes && <p className="leg-note">{day.notes}</p>}
+          <div className="leg-actions">
             <button className="link" onClick={showOnMap}>在地图上看</button>
             <a className="link" href={googleDirections(day)} target="_blank" rel="noreferrer">
               Google 地图导航 ↗
@@ -440,8 +563,7 @@ function DayCard({
           </div>
           <details className="fold">
             <summary>
-              景点 {dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from).length} · 住宿推荐{' '}
-              {day.stayOptions.length} · 餐饮推荐 {day.dining.length}
+              景点 {sightCount}，住宿推荐 {day.stayOptions.length}，餐饮推荐 {day.dining.length}
             </summary>
             <DayGuide trip={trip} day={day} index={index} update={update} />
           </details>
@@ -534,8 +656,8 @@ function DayCard({
           </div>
         </div>
       )}
-      {!editing && acc?.notes && <p className="muted small">住宿备注：{acc.notes}</p>}
-    </section>
+      </div>
+    </li>
   );
 }
 
@@ -744,7 +866,7 @@ function MapView({
           <h2>{day.title}</h2>
           <RouteCheck trip={trip} day={day} update={update} />
           <DayGuide trip={trip} day={day} index={focus!} update={update} />
-          <button className="link" onClick={() => goTo('itinerary')}>去行程页编辑 →</button>
+          <button className="link" onClick={() => goTo('itinerary')}>去行程页编辑</button>
         </section>
       ) : (
         <section className="card">

@@ -60,7 +60,7 @@ export default function Replan({
     return (
       <section className="card row between replan-entry">
         <span>
-          共 <b>{trip.days.length}</b> 天 · 想改天数？
+          共 <b>{trip.days.length}</b> 天，想改天数？
         </span>
         <button
           className="mini on"

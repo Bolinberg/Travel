@@ -226,13 +226,13 @@ export default function TripMap({
 
   return (
     <div className="map-wrap">
-      <div ref={el} className="map" style={{ height }} />
+      <div ref={el} className="map" style={height ? { height } : undefined} />
       {tilesFailed && !hideHelp && (
         <div className="map-offline">
           <b>🗺️ 地图底图加载不了</b>
           <p>
-            通常是当前的打开方式不允许联网，例如在聊天、邮件或文件 App 里直接预览 HTML 文件。请改用 Chrome、Safari、Edge
-            等浏览器打开，或使用部署后的网址（见 README「部署」）。
+            通常是当前的打开方式不允许联网，例如在聊天、邮件或文件 App 里直接预览。请用 Chrome、Safari、Edge
+            等浏览器打开网页版链接。
           </p>
           <p>下面的标记和连线仍按坐标显示，但看不到道路和地名。</p>
           <button className="mini" onClick={() => setHideHelp(true)}>知道了</button>
