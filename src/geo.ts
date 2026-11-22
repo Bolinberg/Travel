@@ -120,7 +120,7 @@ export async function fetchRoute(points: Place[]): Promise<RouteInfo | null> {
 export async function geocode(name: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=' + encodeURIComponent(name),
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(name),
     );
     if (!r.ok) return null;
     const [hit] = await r.json();
@@ -139,3 +139,20 @@ export const links = {
     'https://www.booking.com/searchresults.html?' +
     new URLSearchParams({ ss: town, checkin, checkout, group_adults: String(adults), no_rooms: '1' }).toString(),
 };
+
+/** 行程中所有还没有坐标的地点名 */
+export function missingPlaces(trip: Trip): string[] {
+  const names = trip.days.flatMap((d) => [d.from, ...d.stops, d.to]).map((n) => n.trim()).filter(Boolean);
+  return [...new Set(names.filter((n) => !findPlace(trip, n)))];
+}
+
+/** 依次为多个地点查坐标（Nominatim 要求每秒不超过 1 次） */
+export async function geocodeAll(
+  names: string[],
+  onFound: (name: string, hit: { lat: number; lng: number } | null) => void,
+): Promise<void> {
+  for (let i = 0; i < names.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1100));
+    onFound(names[i], await geocode(names[i]));
+  }
+}

@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Category, Day, Place, Rec, Trip } from './types';
 import { CATEGORY_LABELS } from './types';
 import { addDays, formatDate, fuelCost, mapsUrl, money, summarize } from './calc';
-import { createDefaultTrip } from './defaultTrip';
-import { downloadJson, loadTrip, migrateTrip, saveTrip } from './storage';
+import { createBlankTrip, createDefaultTrip, duplicateTrip, TEMPLATES } from './defaultTrip';
+import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './storage';
 import { newId } from './id';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
-import { fetchRoute, findPlace, geocode, links, useWiki } from './geo';
+import { fetchRoute, findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 
 type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
@@ -20,9 +20,18 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'settings', label: '设置' },
 ];
 
+function initialStore(): Store {
+  const s = loadStore();
+  if (s) return s;
+  const t = createDefaultTrip();
+  return { activeId: t.id, trips: [t] };
+}
+
 export default function App() {
-  const [trip, setTrip] = useState<Trip>(() => loadTrip() ?? createDefaultTrip());
+  const [store, setStore] = useState<Store>(initialStore);
+  const trip = store.trips.find((t) => t.id === store.activeId) ?? store.trips[0];
   const [tab, setTab] = useState<Tab>('overview');
+  const [showTrips, setShowTrips] = useState(false);
   const [focus, setFocus] = useState<number | null>(null);
   const showOnMap = (i: number | null) => {
     setFocus(i);
@@ -30,25 +39,67 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
-  useEffect(() => saveTrip(trip), [trip]);
+  useEffect(() => saveStore(store), [store]);
 
+  // 绑定当前行程 id：异步操作（如查坐标）完成时即使已切换行程，也写回原行程
+  const tripId = trip.id;
   const update: Update = (mutate) =>
-    setTrip((prev) => {
-      const draft = structuredClone(prev);
-      mutate(draft);
-      return draft;
+    setStore((s) => ({
+      ...s,
+      trips: s.trips.map((t) => {
+        if (t.id !== tripId) return t;
+        const draft = structuredClone(t);
+        mutate(draft);
+        return draft;
+      }),
+    }));
+
+  const addTrip = (t: Trip) => {
+    setStore((s) => ({ activeId: t.id, trips: [...s.trips, t] }));
+    setShowTrips(false);
+    setTab('overview');
+    setFocus(null);
+  };
+  const switchTrip = (id: string) => {
+    setStore((s) => ({ ...s, activeId: id }));
+    setShowTrips(false);
+    setTab('overview');
+    setFocus(null);
+  };
+  const deleteTrip = (id: string) =>
+    setStore((s) => {
+      const trips = s.trips.filter((t) => t.id !== id);
+      if (!trips.length) {
+        const t = createDefaultTrip();
+        return { activeId: t.id, trips: [t] };
+      }
+      return { activeId: s.activeId === id ? trips[0].id : s.activeId, trips };
     });
 
   return (
     <div className="app">
       <header className="top">
-        <h1>{trip.name}</h1>
+        <div className="row between">
+          <h1>{trip.name}</h1>
+          <button className="mini" onClick={() => setShowTrips(!showTrips)}>
+            {showTrips ? '关闭' : `我的行程 (${store.trips.length})`}
+          </button>
+        </div>
         <p className="muted">
           {formatDate(trip.startDate)} – {formatDate(addDays(trip.startDate, Math.max(trip.days.length - 1, 0)))}
           {' · '}
           {trip.adults} 大 {trip.children} 小
         </p>
       </header>
+      {showTrips && (
+        <TripsPanel
+          store={store}
+          current={trip}
+          onSwitch={switchTrip}
+          onAdd={addTrip}
+          onDelete={deleteTrip}
+        />
+      )}
       <nav className="tabs" role="tablist">
         {TABS.map((t) => (
           <button
@@ -63,12 +114,12 @@ export default function App() {
         ))}
       </nav>
       <main>
-        {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} />}
+        {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} update={update} />}
         {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
         {tab === 'itinerary' && <Itinerary trip={trip} update={update} showOnMap={showOnMap} />}
         {tab === 'costs' && <Costs trip={trip} update={update} />}
         {tab === 'checklist' && <Checklist trip={trip} update={update} />}
-        {tab === 'settings' && <Settings trip={trip} update={update} replace={setTrip} />}
+        {tab === 'settings' && <Settings trip={trip} update={update} onImport={addTrip} />}
       </main>
     </div>
   );
@@ -80,10 +131,12 @@ function Overview({
   trip,
   goTo,
   showOnMap,
+  update,
 }: {
   trip: Trip;
   goTo: (t: Tab) => void;
   showOnMap: (i: number | null) => void;
+  update: Update;
 }) {
   const s = useMemo(() => summarize(trip), [trip]);
   const done = trip.checklist.filter((c) => c.done).length;
@@ -92,6 +145,7 @@ function Overview({
 
   return (
     <>
+      <MissingBanner trip={trip} update={update} />
       <section className="stats">
         <Stat label="天数" value={`${s.days} 天 ${s.nights} 晚`} />
         <Stat label="总里程" value={`${s.totalKm.toLocaleString()} km`} />
@@ -165,7 +219,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const short = (place: string) => place.replace(/\s+(VIC|SA|NSW)$/, '');
+const short = (place: string) =>
+  place.replace(/,?\s+(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)$/i, '').replace(/,\s*(Australia|New Zealand)$/i, '');
 const leg = (d: Day) => (d.from === d.to ? `${short(d.from)} 周边` : `${short(d.from)} → ${short(d.to)}`);
 
 /* ---------------- 行程 ---------------- */
@@ -393,6 +448,168 @@ function DayCard({
   );
 }
 
+/* ---------------- 我的行程 ---------------- */
+
+function TripsPanel({
+  store,
+  current,
+  onSwitch,
+  onAdd,
+  onDelete,
+}: {
+  store: Store;
+  current: Trip;
+  onSwitch: (id: string) => void;
+  onAdd: (t: Trip) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  return (
+    <section className="card trips">
+      <h2>我的行程</h2>
+      <ul className="plain">
+        {store.trips.map((t) => {
+          const end = addDays(t.startDate, Math.max(t.days.length - 1, 0));
+          const active = t.id === current.id;
+          return (
+            <li key={t.id} className={active ? 'row picked' : 'row'}>
+              <button className="link grow left" onClick={() => onSwitch(t.id)}>
+                <b>{t.name}</b>
+                <div className="muted small">
+                  {formatDate(t.startDate)} – {formatDate(end)} · {t.days.length} 天 · 预计 {money(summarize(t).total)}
+                </div>
+              </button>
+              {active && <span className="tag good">当前</span>}
+              <button
+                className="icon"
+                aria-label="删除行程"
+                onClick={() => confirm(`删除行程「${t.name}」？此操作无法撤销（可先在设置里导出备份）。`) && onDelete(t.id)}
+              >
+                ×
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {creating ? (
+        <NewTripForm current={current} onCreate={onAdd} onCancel={() => setCreating(false)} />
+      ) : (
+        <button className="primary block" onClick={() => setCreating(true)}>+ 新建行程</button>
+      )}
+    </section>
+  );
+}
+
+function NewTripForm({
+  current,
+  onCreate,
+  onCancel,
+}: {
+  current: Trip;
+  onCreate: (t: Trip) => void;
+  onCancel: () => void;
+}) {
+  const [mode, setMode] = useState<string>('blank');
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({
+    name: '',
+    origin: 'Melbourne VIC',
+    destination: '',
+    startDate: addDays(new Date().toISOString().slice(0, 10), 30),
+    days: 5,
+    adults: current.adults,
+    children: current.children,
+    budget: 3000,
+  });
+
+  const create = async () => {
+    if (mode === 'copy') {
+      return onCreate(duplicateTrip(current, f.name.trim() || `${current.name}（副本）`, f.startDate));
+    }
+    const tpl = TEMPLATES.find((x) => x.key === mode);
+    if (tpl) {
+      const t = tpl.create();
+      if (f.name.trim()) t.name = f.name.trim();
+      t.startDate = f.startDate;
+      return onCreate(t);
+    }
+    if (!f.origin.trim() && !f.destination.trim()) return alert('请至少填写出发地或目的地');
+    setBusy(true);
+    const t = createBlankTrip(f);
+    // 先为出发地/目的地查好坐标，地图打开即可显示
+    await geocodeAll(missingPlaces(t), (name, hit) => {
+      if (hit) t.places.push({ name, label: short(name), ...hit });
+    });
+    // 按真实路线填入每天里程和驾驶时间（离线时保持 0，之后可在编辑里重算）
+    for (const d of t.days) {
+      const r = await fetchRoute(dayPlaces(t, d));
+      if (r) Object.assign(d, { km: r.km, driveHours: r.hours });
+    }
+    setBusy(false);
+    onCreate(t);
+  };
+
+  const blank = mode === 'blank';
+  return (
+    <div className="form add">
+      <Field label="从哪里开始">
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="blank">空白行程（填出发地、目的地、天数）</option>
+          <option value="copy">复制当前行程「{current.name}」的路线和预算</option>
+          {TEMPLATES.map((t) => (
+            <option key={t.key} value={t.key}>{t.label}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="行程名称">
+        <input
+          placeholder={blank ? '如：悉尼 → 布里斯班 海岸自驾' : '留空则使用默认名称'}
+          value={f.name}
+          onChange={(e) => setF({ ...f, name: e.target.value })}
+        />
+      </Field>
+      {blank && (
+        <div className="grid2">
+          <Field label="出发地（英文更准）">
+            <input placeholder="Melbourne VIC" value={f.origin} onChange={(e) => setF({ ...f, origin: e.target.value })} />
+          </Field>
+          <Field label="目的地">
+            <input
+              placeholder="Sydney NSW"
+              value={f.destination}
+              onChange={(e) => setF({ ...f, destination: e.target.value })}
+            />
+          </Field>
+          <Field label="天数">
+            <NumInput value={f.days} onChange={(v) => setF({ ...f, days: v })} />
+          </Field>
+          <Field label="预算 (AUD)">
+            <NumInput value={f.budget} onChange={(v) => setF({ ...f, budget: v })} />
+          </Field>
+          <Field label="大人">
+            <NumInput value={f.adults} onChange={(v) => setF({ ...f, adults: v })} />
+          </Field>
+          <Field label="小孩">
+            <NumInput value={f.children} onChange={(v) => setF({ ...f, children: v })} />
+          </Field>
+        </div>
+      )}
+      <Field label="出发日期">
+        <input type="date" value={f.startDate} onChange={(e) => e.target.value && setF({ ...f, startDate: e.target.value })} />
+      </Field>
+      {blank && (
+        <p className="muted small">
+          会生成「出发 → 目的地停留 → 返程」的骨架。之后在「行程」里逐天改目的地、加途经景点，点「全部定位」即可上地图，并可按真实路线自动计算里程。
+        </p>
+      )}
+      <div className="row">
+        <button className="primary" disabled={busy} onClick={create}>{busy ? '正在定位和计算路线…' : '创建'}</button>
+        <button onClick={onCancel}>取消</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- 地图 ---------------- */
 
 function MapView({
@@ -411,6 +628,7 @@ function MapView({
   const day = focus !== null ? trip.days[focus] : null;
   return (
     <>
+      <MissingBanner trip={trip} update={update} />
       <div className="chips">
         <button className={focus === null ? 'chip active' : 'chip'} onClick={() => setFocus(null)}>全程</button>
         {trip.days.map((d, i) => (
@@ -445,6 +663,29 @@ function MapView({
         </section>
       )}
     </>
+  );
+}
+
+/** 有地点缺坐标时提示一键定位 */
+function MissingBanner({ trip, update }: { trip: Trip; update: Update }) {
+  const missing = missingPlaces(trip);
+  const [busy, setBusy] = useState(false);
+  if (!missing.length) return null;
+  const run = async () => {
+    setBusy(true);
+    await geocodeAll(missing, (name, hit) => {
+      if (hit) update((t) => void t.places.push({ name, label: short(name), ...hit }));
+    });
+    setBusy(false);
+  };
+  return (
+    <section className="card banner small">
+      <span>
+        {missing.length} 个地点还没有坐标，地图上暂不显示：{missing.slice(0, 4).map(short).join('、')}
+        {missing.length > 4 ? '…' : ''}
+      </span>
+      <button className="mini on" disabled={busy} onClick={run}>{busy ? '定位中…' : '全部定位'}</button>
+    </section>
   );
 }
 
@@ -644,8 +885,18 @@ function PlaceTools({
     setBusy(name);
     const hit = await geocode(name);
     setBusy('');
-    if (!hit) return alert(`没找到「${name}」，试试写成英文全称加州名，如 "Lorne VIC"。`);
+    if (!hit) return alert(`没找到「${name}」，试试写成英文全称加州/国家名，如 "Lorne VIC" 或 "Queenstown, New Zealand"。`);
     update((t) => void t.places.push({ name, label: short(name), ...hit }));
+  };
+  const locateAll = async () => {
+    setBusy('all');
+    const failed: string[] = [];
+    await geocodeAll(unknown, (name, hit) => {
+      if (hit) update((t) => void t.places.push({ name, label: short(name), ...hit }));
+      else failed.push(name);
+    });
+    setBusy('');
+    if (failed.length) alert(`以下地点没找到：${failed.join('、')}。可改写名称后再试。`);
   };
 
   const calc = async () => {
@@ -664,6 +915,11 @@ function PlaceTools({
       {unknown.length > 0 && (
         <p>
           <span className="muted">以下地点还没有坐标，地图上不会显示：</span>
+          {unknown.length > 1 && (
+            <button className="mini on" disabled={!!busy} onClick={locateAll}>
+              {busy === 'all' ? '定位中…' : '全部定位'}
+            </button>
+          )}
           {unknown.map((n) => (
             <button key={n} className="mini" disabled={!!busy} onClick={() => locate(n)}>
               {busy === n ? '查找中…' : `定位「${short(n)}」`}
@@ -860,15 +1116,16 @@ function Checklist({ trip, update }: { trip: Trip; update: Update }) {
 
 /* ---------------- 设置 ---------------- */
 
-function Settings({ trip, update, replace }: { trip: Trip; update: Update; replace: (t: Trip) => void }) {
+function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onImport: (t: Trip) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const importFile = async (f: File) => {
     try {
       const t = migrateTrip(JSON.parse(await f.text()));
       if (!t) throw new Error('格式不对');
-      replace(t);
-      alert('导入成功');
+      // 导入为新行程，不覆盖现有数据
+      onImport({ ...t, id: newId() });
+      alert(`已导入「${t.name}」`);
     } catch {
       alert('导入失败：请选择从本 App 导出的 JSON 文件');
     }
@@ -939,18 +1196,12 @@ function Settings({ trip, update, replace }: { trip: Trip; update: Update; repla
       <section className="card">
         <h2>数据</h2>
         <p className="muted small">
-          数据只保存在本设备浏览器中。要和家人共享，请「导出」后把文件发给对方，对方「导入」即可。
+          数据只保存在本设备浏览器中。要和家人共享，请「导出」后把文件发给对方，对方「导入」会作为一个新行程加入。
         </p>
         <div className="row wrap">
           <button className="primary" onClick={() => downloadJson(trip)}>导出 JSON</button>
           <button onClick={() => fileRef.current?.click()}>导入 JSON</button>
           <button onClick={() => window.print()}>打印 / 存为 PDF</button>
-          <button
-            className="danger"
-            onClick={() => confirm('恢复默认行程？当前修改将丢失。') && replace(createDefaultTrip())}
-          >
-            恢复默认
-          </button>
         </div>
         <input
           ref={fileRef}

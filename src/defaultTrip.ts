@@ -142,6 +142,7 @@ export function createDefaultTrip(): Trip {
 
   return {
     version: 2,
+    id: newId(),
     name: '墨尔本 → 阿德莱德 家庭自驾',
     startDate: '2026-12-19',
     adults: 2,
@@ -153,13 +154,28 @@ export function createDefaultTrip(): Trip {
     places: structuredClone(DEFAULT_PLACES),
     expenses,
     checklist: [
+      ...genericChecklist(),
+      ...checklist('路上注意', [
+        '进入南澳前处理掉新鲜水果蔬菜（检疫规定，违者罚款）',
+        '南澳比维州慢 30 分钟，注意入住/预约时间',
+        '偏远路段加满油再走（库隆、Western Hwy）',
+      ]),
       ...checklist('出发前', [
-        '预订全部住宿（12 月旺季，尽早）',
-        '汽车保养：轮胎、机油、雨刷、冷却液',
-        '确认道路救援（RACV / RAA）有效',
-        '驾照、车辆注册、保险资料',
-        '下载离线地图（大洋路、库隆部分路段无信号）',
         '安装 VicEmergency 和 Alerts SA（夏季山火预警）',
+      ]),
+    ],
+  };
+}
+
+/** 任何自驾行程通用的准备清单 */
+export function genericChecklist(): ChecklistItem[] {
+  return [
+      ...checklist('出发前', [
+        '预订全部住宿（节假日旺季尽早）',
+        '汽车保养：轮胎、机油、雨刷、冷却液',
+        '确认道路救援会员（如 RACV / RAA / NRMA）有效',
+        '驾照、车辆注册、保险资料',
+        '下载离线地图（偏远路段可能无信号）',
       ]),
       ...checklist('行李', [
         '儿童安全座椅',
@@ -171,13 +187,10 @@ export function createDefaultTrip(): Trip {
         '保暖外套（海边早晚凉）',
       ]),
       ...checklist('路上注意', [
-        '进入南澳前处理掉新鲜水果蔬菜（检疫规定，违者罚款）',
-        '南澳比维州慢 30 分钟，注意入住/预约时间',
-        '黄昏和夜间注意袋鼠，尽量不在天黑后开长途',
-        '偏远路段加满油再走（库隆、Western Hwy）',
+        '每开 2 小时休息一次',
+        '黄昏和夜间注意动物，尽量不在天黑后开长途',
       ]),
-    ],
-  };
+  ];
 }
 
 function toRec(r: Omit<Rec, 'id' | 'picked'>): Rec {
@@ -187,10 +200,15 @@ function toRec(r: Omit<Rec, 'id' | 'picked'>): Rec {
 /** 旧版本（v1）数据升级：补上地点库与推荐信息 */
 export function migrateTrip(t: any): Trip | null {
   if (!t || !Array.isArray(t.days) || !Array.isArray(t.expenses) || !Array.isArray(t.checklist)) return null;
-  if (t.version === 2) return t as Trip;
+  if (t.version === 2) {
+    if (!t.id) t.id = newId();
+    if (!Array.isArray(t.places)) t.places = [];
+    return t as Trip;
+  }
   if (t.version !== 1) return null;
   const fresh = createDefaultTrip();
   t.version = 2;
+  t.id = newId();
   t.places = fresh.places;
   t.days.forEach((d: Day, i: number) => {
     const f = fresh.days[i];
@@ -200,3 +218,66 @@ export function migrateTrip(t: any): Trip | null {
   });
   return t as Trip;
 }
+
+export interface NewTripOptions {
+  name: string;
+  origin: string;
+  destination: string;
+  startDate: string;
+  days: number;
+  adults: number;
+  children: number;
+  budget: number;
+}
+
+/** 空白行程：第一天从出发地出发，最后一天返回出发地，中间停留在目的地 */
+export function createBlankTrip(o: NewTripOptions): Trip {
+  const n = Math.max(1, Math.min(60, Math.round(o.days)));
+  const dest = o.destination.trim() || o.origin.trim();
+  const origin = o.origin.trim() || dest;
+  const days: Day[] = Array.from({ length: n }, (_, i) => {
+    const from = i === 0 ? origin : dest;
+    const to = i === n - 1 && n > 1 ? origin : dest;
+    const title = i === 0 ? '出发' : i === n - 1 ? '返程' : `第 ${i + 1} 天`;
+    const last = i === n - 1 && n > 1;
+    return day(title, from, to, 0, 0, [], last ? null : stay(`${to} 住宿`, 0));
+  });
+  return {
+    version: 2,
+    id: newId(),
+    name: o.name.trim() || `${origin} → ${dest}`,
+    startDate: o.startDate,
+    adults: o.adults,
+    children: o.children,
+    budget: o.budget,
+    vehicle: { name: '自驾车', litresPer100km: 9, fuelPrice: 2 },
+    food: { adultPerDay: 60, childPerDay: 35 },
+    days,
+    places: [],
+    expenses: [],
+    checklist: genericChecklist(),
+  };
+}
+
+/** 复制行程结构：新 id，清空预订/付款/勾选状态 */
+export function duplicateTrip(src: Trip, name: string, startDate: string): Trip {
+  const t = structuredClone(src);
+  t.id = newId();
+  t.name = name;
+  t.startDate = startDate;
+  const dayIds = new Map<string, string>();
+  for (const d of t.days) {
+    const id = newId();
+    dayIds.set(d.id, id);
+    d.id = id;
+    if (d.accommodation) Object.assign(d.accommodation, { booked: false, paid: false, notes: '' });
+    for (const r of [...d.stayOptions, ...d.dining]) Object.assign(r, { id: newId(), picked: false });
+  }
+  for (const e of t.expenses) Object.assign(e, { id: newId(), paid: false, dayId: e.dayId ? dayIds.get(e.dayId) ?? null : null });
+  for (const c of t.checklist) Object.assign(c, { id: newId(), done: false });
+  return t;
+}
+
+export const TEMPLATES = [
+  { key: 'mel-adl', label: '示例：墨尔本 → 大洋路 → 阿德莱德（9 天，含景点/住宿/餐饮推荐）', create: createDefaultTrip },
+];

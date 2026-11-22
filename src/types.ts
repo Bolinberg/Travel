@@ -90,6 +90,7 @@ export interface ChecklistItem {
 
 export interface Trip {
   version: 2;
+  id: string;
   name: string;
   startDate: string; // YYYY-MM-DD
   adults: number;

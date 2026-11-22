@@ -208,3 +208,7 @@ details.fold { margin-top: 10px; border-top: 1px solid var(--border); padding-to
 details.fold > summary { cursor: pointer; color: var(--accent); font-size: 14px; }
 details.fold .guide { border-top: 0; margin-top: 0; }
 @media print { details.fold .guide { display: block; } }
+.top h1 { flex: 1; min-width: 0; }
+.trips li.picked { background: var(--accent-soft); margin: 0 -10px; padding: 8px 10px; border-radius: 8px; }
+button.left { text-align: left; color: var(--text); font-size: 15px; }
+.banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-color: var(--warn); }

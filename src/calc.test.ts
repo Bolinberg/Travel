@@ -74,3 +74,47 @@ describe('places & migration', () => {
     expect(migrateTrip({ foo: 1 })).toBeNull();
   });
 });
+
+import { createBlankTrip, duplicateTrip } from './defaultTrip';
+
+describe('generic trips', () => {
+  const opts = {
+    name: '',
+    origin: 'Sydney NSW',
+    destination: 'Byron Bay NSW',
+    startDate: '2027-01-10',
+    days: 4,
+    adults: 2,
+    children: 1,
+    budget: 2000,
+  };
+
+  it('blank trip goes out and back', () => {
+    const t = createBlankTrip(opts);
+    expect(t.name).toBe('Sydney NSW → Byron Bay NSW');
+    expect(t.days).toHaveLength(4);
+    expect(t.days[0].from).toBe('Sydney NSW');
+    expect(t.days[0].to).toBe('Byron Bay NSW');
+    expect(t.days[3].to).toBe('Sydney NSW');
+    expect(t.days[3].accommodation).toBeNull();
+    expect(summarize(t).nights).toBe(3);
+    expect(t.checklist.some((c) => c.text.includes('南澳'))).toBe(false);
+  });
+
+  it('duplicate gets fresh ids and cleared status', () => {
+    const src = createDefaultTrip();
+    src.days[0].accommodation!.booked = true;
+    src.expenses[0].paid = true;
+    src.checklist[0].done = true;
+    const t = duplicateTrip(src, 'copy', '2027-03-01');
+    expect(t.id).not.toBe(src.id);
+    expect(t.days[0].id).not.toBe(src.days[0].id);
+    expect(t.days[0].accommodation!.booked).toBe(false);
+    expect(t.expenses[0].paid).toBe(false);
+    expect(t.checklist[0].done).toBe(false);
+    // 关联到某天的开销指向新的 day id
+    const linked = t.expenses.find((e) => e.dayId);
+    expect(t.days.some((d) => d.id === linked!.dayId)).toBe(true);
+    expect(src.days[0].accommodation!.booked).toBe(true);
+  });
+});
