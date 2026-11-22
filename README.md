@@ -30,6 +30,16 @@
 - 住宿/餐饮：每天都有 Booking、Tripadvisor、Google 地图搜索链接，看中的用「+ 自己添加」记下来。
 - 导入别人导出的 JSON 会作为新行程加入，不会覆盖现有行程。
 
+### ✨ AI 推荐
+
+在「设置 → AI 推荐」填入自己的 [Anthropic API Key](https://console.anthropic.com/settings/keys)（可选填家庭偏好），然后：
+
+- 每天展开「景点 · 住宿 · 餐饮」点 **✨ AI 生成推荐**，或在设置里 **为全部天生成**；
+- Claude（默认 Claude Opus 5.5）会联网搜索，只推荐能确认仍在营业的商家，返回：沿途景点（坐标 + 中文介绍，自动加入地图和途经点）、当晚住宿 3 家（含估价，可一键填入）、午/晚餐餐厅；
+- 结果去重后合并到当天，不会覆盖已有内容；每次显示搜索次数和估算费用（通常每天 US$0.1–0.5）。
+
+实现见 `src/ai.ts`：浏览器直接调用 Anthropic Messages API（流式），使用 `web_search` 服务端工具 + 严格模式的 `submit_recommendations` 工具返回结构化结果，客户端再做校验；开启了服务端 refusal fallback。Key 只存在本机 localStorage，不随行程导出。若要给不方便自己申请 Key 的家人用，可以改为经由自己的后端代理转发（届时把 Key 放在服务端）。
+
 新增内置模板：在 `src/defaultTrip.ts` 的 `TEMPLATES` 里加一项，地点坐标放在 `src/places.ts`，推荐放在 `src/guides.ts`。
 
 ## 默认行程（9 天 8 晚，约 1,975 km）

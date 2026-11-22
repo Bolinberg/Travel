@@ -5,6 +5,7 @@ import { addDays, formatDate, fuelCost, mapsUrl, money, summarize } from './calc
 import { createBlankTrip, createDefaultTrip, duplicateTrip, TEMPLATES } from './defaultTrip';
 import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './storage';
 import { newId } from './id';
+import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import { fetchRoute, findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 
@@ -702,6 +703,7 @@ function DayGuide({ trip, day, index, update }: { trip: Trip; day: Day; index: n
 
   return (
     <div className="guide">
+      {update && <AiButton trip={trip} index={index} update={update} />}
       {sights.length > 0 && (
         <>
           <h3>📍 景点与风景</h3>
@@ -756,6 +758,46 @@ function DayGuide({ trip, day, index, update }: { trip: Trip; day: Day; index: n
         onAdd={update && ((r) => setRecs('dining', (list) => void list.push(r)))}
         defaultWhere={town}
       />
+    </div>
+  );
+}
+
+/** 为某一天调用 AI 生成推荐 */
+function AiButton({ trip, index, update }: { trip: Trip; index: number; update: Update }) {
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const day = trip.days[index];
+
+  const run = async () => {
+    const settings = loadAiSettings();
+    if (!settings.apiKey) {
+      setStatus('请先在「设置 → AI 推荐」里填写 Anthropic API Key。');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await generateDayRecs(settings, trip, index, setStatus);
+      const counts = { sights: 0, stays: 0, dining: 0 };
+      update((t) => {
+        Object.assign(counts, applyResult(t, day.id, r.result));
+      });
+      setStatus(
+        `已添加 景点 ${counts.sights} · 住宿 ${counts.stays} · 餐饮 ${counts.dining}` +
+          `（搜索 ${r.searches} 次，约 US$${r.costUsd.toFixed(2)}）。推荐来自网络搜索，预订前请再核实。`,
+      );
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ai">
+      <button className="mini ai-btn" disabled={busy} onClick={run}>
+        {busy ? '✨ 生成中…' : '✨ AI 生成推荐'}
+      </button>
+      {status && <span className="muted small">{status}</span>}
     </div>
   );
 }
@@ -1193,6 +1235,8 @@ function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onIm
         </div>
       </section>
 
+      <AiSettingsCard trip={trip} update={update} />
+
       <section className="card">
         <h2>数据</h2>
         <p className="muted small">
@@ -1216,6 +1260,89 @@ function Settings({ trip, update, onImport }: { trip: Trip; update: Update; onIm
         />
       </section>
     </>
+  );
+}
+
+function AiSettingsCard({ trip, update }: { trip: Trip; update: Update }) {
+  const [s, setS] = useState<AiSettings>(loadAiSettings);
+  const [progress, setProgress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = (patch: Partial<AiSettings>) => {
+    const next = { ...s, ...patch };
+    setS(next);
+    saveAiSettings(next);
+  };
+
+  const runAll = async () => {
+    if (!s.apiKey) return alert('请先填写 API Key');
+    if (!confirm(`将为全部 ${trip.days.length} 天依次生成推荐，每天约 US$0.1–0.5（按实际用量计费）。继续？`)) return;
+    setBusy(true);
+    let cost = 0;
+    const snapshot = trip;
+    for (let i = 0; i < snapshot.days.length; i++) {
+      const id = snapshot.days[i].id;
+      try {
+        const r = await generateDayRecs(s, snapshot, i, (m) => setProgress(`D${i + 1}：${m}`));
+        cost += r.costUsd;
+        update((t) => {
+          applyResult(t, id, r.result);
+        });
+      } catch (e) {
+        setProgress(`D${i + 1} 失败：${e instanceof Error ? e.message : e}`);
+        setBusy(false);
+        return;
+      }
+    }
+    setProgress(`全部完成，共约 US$${cost.toFixed(2)}。到「行程」或「地图」页查看。`);
+    setBusy(false);
+  };
+
+  return (
+    <section className="card form">
+      <h2>✨ AI 推荐</h2>
+      <p className="muted small">
+        用 Claude 联网搜索，为每天生成景点（含坐标、中文介绍）、住宿和餐饮推荐，只推荐查得到仍在营业的商家。需要你自己的{' '}
+        <a className="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
+          Anthropic API Key
+        </a>
+        ，按用量计费。
+      </p>
+      <Field label="Anthropic API Key">
+        <input
+          type="password"
+          autoComplete="off"
+          placeholder="sk-ant-…"
+          value={s.apiKey}
+          onChange={(e) => set({ apiKey: e.target.value })}
+        />
+      </Field>
+      <p className="muted small">
+        ⚠️ Key 只保存在这台设备的浏览器里，不会随「导出」发给别人。请勿在公用电脑上填写；建议在 Anthropic 控制台为它设置消费上限。
+      </p>
+      <Field label="模型">
+        <select value={s.model} onChange={(e) => set({ model: e.target.value })}>
+          {AI_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="家庭偏好（可选）">
+        <textarea
+          rows={2}
+          placeholder="如：孩子 6 岁和 9 岁；喜欢动物和海滩；想吃中餐/海鲜；住宿要有厨房；预算中等"
+          value={s.preferences}
+          onChange={(e) => set({ preferences: e.target.value })}
+        />
+      </Field>
+      <div className="row wrap">
+        <button className="primary" disabled={busy || !s.apiKey} onClick={runAll}>
+          {busy ? '生成中…' : `为全部 ${trip.days.length} 天生成`}
+        </button>
+        {s.apiKey && <button onClick={() => set({ apiKey: '' })}>清除 Key</button>}
+      </div>
+      {progress && <p className="muted small">{progress}</p>}
+      <p className="muted small">也可以在每天的「景点 · 住宿 · 餐饮」里单独点「✨ AI 生成推荐」。</p>
+    </section>
   );
 }
 

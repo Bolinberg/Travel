@@ -212,3 +212,7 @@ details.fold .guide { border-top: 0; margin-top: 0; }
 .trips li.picked { background: var(--accent-soft); margin: 0 -10px; padding: 8px 10px; border-radius: 8px; }
 button.left { text-align: left; color: var(--text); font-size: 15px; }
 .banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-color: var(--warn); }
+
+.ai { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; }
+button.ai-btn { border-color: #7c3aed; color: #7c3aed; font-weight: 600; }
+@media (prefers-color-scheme: dark) { button.ai-btn { border-color: #a78bfa; color: #a78bfa; } }

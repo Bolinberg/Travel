@@ -56,6 +56,7 @@ export default function TripMap({
     map.current = m;
     layer.current = L.layerGroup().addTo(m);
     return () => {
+      m.stop();
       m.remove();
       map.current = null;
     };
@@ -108,7 +109,7 @@ export default function TripMap({
       });
     }
 
-    if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 12 });
+    if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 12, animate: false });
     setRouting(pending.length > 0);
     Promise.all(pending).then(() => alive && setRouting(false));
     return () => {
