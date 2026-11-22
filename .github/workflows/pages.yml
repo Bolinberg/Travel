@@ -40,5 +40,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # 如果仓库 Pages 仍设为「从分支部署」，GitHub 会同时发布未构建的源代码；
+      # 稍等一会儿再发布，确保最后生效的是构建好的版本。Pages 来源设为 GitHub Actions 后可删掉这一步。
+      - name: Wait for any branch-based Pages build to finish
+        run: sleep 75
       - id: deployment
         uses: actions/deploy-pages@v4

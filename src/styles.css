@@ -1457,3 +1457,19 @@ button.left {
 .route-card .map {
   border: 1px solid var(--line);
 }
+
+/* 新方案提示 */
+.offer {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border: 2px solid var(--sign);
+  border-radius: var(--radius);
+}
+.offer p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}

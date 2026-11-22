@@ -8,6 +8,7 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
+import { createKangarooIslandTrip } from './templateKI';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -63,8 +64,27 @@ function useWide() {
 function initialStore(): Store {
   const s = loadStore();
   if (s) return s;
-  const t = createDefaultTrip();
+  // 第一次打开：直接用家里确定的 6 天方案
+  const t = createKangarooIslandTrip();
   return { activeId: t.id, trips: [t] };
+}
+
+/* 已经用过旧版本的设备：提示一次新的 6 天方案 */
+const KI_OFFER_KEY = 'travel-planner.offer.ki6';
+const hasKiTrip = (s: Store) => s.trips.some((t) => t.name.includes('袋鼠岛'));
+function offerDismissed(): boolean {
+  try {
+    return localStorage.getItem(KI_OFFER_KEY) === 'dismissed';
+  } catch {
+    return false;
+  }
+}
+function dismissOffer() {
+  try {
+    localStorage.setItem(KI_OFFER_KEY, 'dismissed');
+  } catch {
+    /* 忽略 */
+  }
 }
 
 export default function App() {
@@ -73,6 +93,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('itinerary');
   const wide = useWide();
   const [showTrips, setShowTrips] = useState(false);
+  const [kiOffer, setKiOffer] = useState(() => !offerDismissed());
   const sync = useSync(store, setStore);
   // 打开邀请链接（#join=…）时提示加入
   const [invite, setInvite] = useState(() => (typeof location !== 'undefined' ? parseInvite(location.hash) : null));
@@ -169,6 +190,35 @@ export default function App() {
           </button>
         </div>
       </header>
+      {kiOffer && !hasKiTrip(store) && (
+        <section className="offer" aria-label="新方案">
+          <div>
+            <b>新的 6 天方案已经做好</b>
+            <p>墨尔本 → 大洋路 → 甘比尔山 → 阿德莱德（住 2 晚）→ 袋鼠岛，每天车程 5 小时以内。现在的行程会保留在「我的行程」里。</p>
+          </div>
+          <div className="row wrap">
+            <button
+              className="primary"
+              onClick={() => {
+                const t = createKangarooIslandTrip();
+                t.startDate = trip.startDate; // 沿用你已经定好的出发日期
+                addTrip(t);
+                window.scrollTo(0, 0);
+              }}
+            >
+              切换到 6 天方案
+            </button>
+            <button
+              onClick={() => {
+                dismissOffer();
+                setKiOffer(false);
+              }}
+            >
+              暂不
+            </button>
+          </div>
+        </section>
+      )}
       {invite && sync.cfg?.key !== invite.key && (
         <JoinPrompt invite={invite} store={store} setCfg={sync.setCfg} onDone={closeInvite} />
       )}
