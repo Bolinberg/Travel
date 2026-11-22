@@ -250,3 +250,104 @@ export function createLoopTrip(): Trip {
     ],
   };
 }
+
+/* ------------------------------------------------------------------
+ * 8 天往返（默认）：大洋路 → 甘比尔山 → 阿德莱德（3 晚：动物园看熊猫 + 北台地博物馆美术馆）→ 袋鼠岛 → 墨尔本
+ * 车程（OSRM）：4.6 / 4.5 / 4.3 / 步行 / 3.3 / 4.8 / 4.9 / 4.5 小时。
+ * 阿德莱德场馆信息于 2026 年 11 月核实：熊猫星秋、宜兰 2025 年 1 月起公开展出（10 年租借），随动物园门票参观；
+ * 南澳博物馆、美术馆、州立图书馆、植物园免费；移民博物馆 2026 年 7 月起闭馆维修。
+ * ------------------------------------------------------------------ */
+
+export const CITY_PLACES: Place[] = [
+  {
+    name: 'Adelaide Zoo SA', label: '阿德莱德动物园（大熊猫）', lat: -34.915, lng: 138.6062, wiki: 'Adelaide Zoo',
+    desc: '大熊猫星秋和宜兰在竹林馆，随门票参观；每天 9:30–17:00，建议网上先买票、早到避开排队，家庭游约 3–4 小时。',
+  },
+  {
+    name: 'South Australian Museum SA', label: '南澳博物馆', lat: -34.921, lng: 138.6036, wiki: 'South Australian Museum',
+    desc: '免费，每天 10:00–17:00。恐龙和巨型动物化石、鲸鱼骨架、古埃及展、原住民文化馆，孩子最爱（太平洋文化馆 2026 年底前暂闭）。',
+  },
+  {
+    name: 'Art Gallery of South Australia SA', label: '南澳美术馆', lat: -34.9207, lng: 138.6043, wiki: 'Art Gallery of South Australia',
+    desc: '免费，每天 10:00–17:00，紧挨博物馆。大型雕塑和当代装置孩子也爱看；馆内咖啡馆开到 16:30。',
+  },
+  {
+    name: 'State Library of South Australia SA', label: '南澳州立图书馆（Mortlock 厅）', lat: -34.9211, lng: 138.6027,
+    wiki: 'State Library of South Australia',
+    desc: '免费，工作日 10:00–17:00。Mortlock 阅览厅像《哈利·波特》里的图书馆，拍照很美；有儿童区 Little Library。',
+  },
+];
+
+const CITY_LUNCH: R[] = [
+  rec({ name: 'Botanic Lodge', where: 'Adelaide Botanic Garden', type: '湖边休闲餐厅 · 午餐', price: '$$', note: '有儿童菜单；湖边没有围栏，注意看好孩子' }),
+  rec({ name: 'Evergreen Deli', where: 'Adelaide Botanic Garden', type: '轻食熟食 · 午餐', price: '$', note: '花园里快速吃个午饭' }),
+  rec({ name: 'AGSA_eat', where: 'Art Gallery of South Australia', type: '美术馆咖啡馆', price: '$–$$', note: '看展顺路，开到 16:30' }),
+];
+
+export const GRAND_NAME = '墨尔本 → 阿德莱德 → 袋鼠岛 → 墨尔本 8 天往返';
+
+export function createGrandTrip(): Trip {
+  const loop = createLoopTrip();
+  const ki = createKangarooIslandTrip();
+  const clone = (d: Day): Day => ({ ...structuredClone(d), id: newId() });
+
+  const cityDay = day(
+    '阿德莱德：动物园看熊猫 + 博物馆美术馆', 'Adelaide SA', 'Adelaide SA', 5, 1.2,
+    ['Adelaide Zoo SA', 'Adelaide Botanic Garden SA', 'South Australian Museum SA', 'Art Gallery of South Australia SA', 'State Library of South Australia SA'],
+    stay('Adelaide 住宿（第 2 晚）', 380),
+    '全天步行：9:30 动物园开门先看熊猫 → 穿过植物园（午餐）→ 北台地的博物馆、美术馆、图书馆都在一条街上，相隔 1–3 分钟。场馆 17:00 关门。傍晚可坐电车去 Glenelg 看日落。天气 36°C 以上植物园温室会提前关。',
+    pick('Adelaide', 'stay'), CITY_LUNCH,
+  );
+  cityDay.mode = 'walk';
+
+  const toKI = clone(ki.days[4]);
+  const backFromKI = clone(ki.days[5]);
+  backFromKI.accommodation = stay('Adelaide 住宿（第 3 晚）', 380);
+  backFromKI.notes = '车程最紧的一天：早上先去弗林德斯蔡斯国家公园，Penneshaw 赶下午的渡轮（留足余量），回大陆后直接进城休息。大风天岩石和拱门可能关闭。';
+
+  const homeA = clone(loop.days[4]);
+  const homeB = clone(loop.days[5]);
+
+  const days: Day[] = [clone(loop.days[0]), clone(loop.days[1]), clone(loop.days[2]), cityDay, toKI, backFromKI, homeA, homeB];
+
+  const expenses: Expense[] = [
+    { id: newId(), title: '阿德莱德动物园家庭票（约 $124，网上先买）', category: 'activity', amount: 124, dayId: cityDay.id, paid: false },
+    { id: newId(), title: 'SeaLink 渡轮往返（1 车 + 2 大 2 小，最低约 $496，12 月旺季会更贵，以报价为准）', category: 'transport', amount: 600, dayId: toKI.id, paid: false },
+    { id: newId(), title: '海狮湾家庭票（约 $110）', category: 'activity', amount: 110, dayId: toKI.id, paid: false },
+    { id: newId(), title: '小撒哈拉滑沙板租用（约 $37/块 × 2）', category: 'activity', amount: 74, dayId: toKI.id, paid: false },
+    { id: newId(), title: '弗林德斯蔡斯国家公园家庭一日票（约 $38）', category: 'activity', amount: 38, dayId: backFromKI.id, paid: false },
+    { id: newId(), title: '阿德莱德停车（3 晚）', category: 'transport', amount: 90, dayId: null, paid: false },
+    { id: newId(), title: '零食 / 饮用水 / 路上补给', category: 'food', amount: 140, dayId: null, paid: false },
+    { id: newId(), title: '出发前汽车保养检查', category: 'other', amount: 200, dayId: null, paid: false },
+  ];
+
+  const places = [...loop.places];
+  for (const p of [...KI_PLACES, ...CITY_PLACES]) if (!places.some((x) => x.name === p.name)) places.push(p);
+
+  return {
+    ...loop,
+    id: newId(),
+    name: GRAND_NAME,
+    budget: 7000,
+    days,
+    places,
+    expenses,
+    checklist: [
+      ...genericChecklist(),
+      ...checklist('阿德莱德', [
+        '网上提前买动物园门票（看熊猫）；想参加熊猫幕后体验要另外预约',
+        '查天气：36°C 以上植物园温室提前关门',
+      ]),
+      ...checklist('袋鼠岛', [
+        '尽早预订 SeaLink 渡轮（12 月旺季会满），先订船再订岛上住宿；订票需填车辆品牌、型号、年份',
+        '上船前洗车（防瓦螨），开船前 30 分钟到 Cape Jervis',
+        '不要带蜂蜜、蜂蜡等蜂产品和未清洗的土豆上岛（袋鼠岛生物安全规定，码头会检查）',
+        '出发前查海狮湾沙滩是否恢复开放（2026 年 8 月起暂停）',
+      ]),
+      ...checklist('路上注意', [
+        '进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）',
+        '南澳比维州慢 30 分钟，注意渡轮、入住和预约时间',
+      ]),
+    ],
+  };
+}

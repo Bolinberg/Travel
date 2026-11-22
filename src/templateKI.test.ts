@@ -46,3 +46,23 @@ describe('6-day round trip template', () => {
     for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
   });
 });
+
+import { createGrandTrip } from './templateKI';
+
+describe('8-day grand round trip', () => {
+  const t = createGrandTrip();
+  it('fits everything the family asked for', () => {
+    expect(t.days).toHaveLength(8);
+    expect(t.days[0].from).toBe('Melbourne VIC');
+    expect(t.days[7].to).toBe('Melbourne VIC');
+    expect(Math.max(...t.days.map((d) => d.driveHours))).toBeLessThanOrEqual(5);
+    const stops = t.days.flatMap((d) => d.stops);
+    for (const s of ['Mount Gambier SA', 'Adelaide Zoo SA', 'South Australian Museum SA', 'Art Gallery of South Australia SA', 'Seal Bay Conservation Park SA'])
+      expect(stops, s).toContain(s);
+    expect(t.days.filter((d) => d.to === 'Adelaide SA' && d.accommodation).length).toBe(3);
+    expect(new Set(t.days.map((d) => d.id)).size).toBe(8);
+    for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
+    const linked = t.expenses.filter((e) => e.dayId);
+    for (const e of linked) expect(t.days.some((d) => d.id === e.dayId)).toBe(true);
+  });
+});

@@ -279,9 +279,14 @@ export function duplicateTrip(src: Trip, name: string, startDate: string): Trip 
   return t;
 }
 
-import { createKangarooIslandTrip, createLoopTrip } from './templateKI';
+import { createGrandTrip, createKangarooIslandTrip, createLoopTrip } from './templateKI';
 
 export const TEMPLATES = [
+  {
+    key: 'mel-grand-8',
+    label: '8 天往返：大洋路 → 甘比尔山 → 阿德莱德（熊猫、博物馆）→ 袋鼠岛 → 墨尔本（每天车程 5 小时内）',
+    create: createGrandTrip,
+  },
   {
     key: 'mel-loop-6',
     label: '6 天往返：墨尔本 → 十二门徒岩 → 甘比尔山 → 阿德莱德（2 晚）→ 墨尔本（每天车程 5 小时内）',
