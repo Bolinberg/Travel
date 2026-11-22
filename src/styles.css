@@ -34,13 +34,16 @@
   --c-shopping: #b4656f;
   --c-other: #a3adb0;
 
+  --land: #f6f8f4;
+  --coast: #9fb3b0;
+  --water: #cddfe3;
   --font: 'Overpass', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
     'Noto Sans SC', 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #0e1a1d; /* 夜里的海 */
     --surface: #152428;
     --sunk: #1b2e33;
@@ -59,7 +62,33 @@
     --c-transport: #8a9a9f;
     --c-other: #5b6b6f;
     color-scheme: dark;
+    --land: #18292d;
+    --coast: #3d5559;
+    --water: #0b1619;
   }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1a1d; /* 夜里的海 */
+  --surface: #152428;
+  --sunk: #1b2e33;
+  --ink: #e4ecea;
+  --muted: #93a5a7;
+  --line: #26393e;
+  --sign: #0e7a51;
+  --link: #5cc79a;
+  --amber: #f2b43a;
+  --amber-ink: #f6c870;
+  --amber-soft: #3a2f14;
+  --good: #5cc79a;
+  --good-soft: #163a2b;
+  --bad: #f07167;
+  --focus: #7cc3e3;
+  --c-transport: #8a9a9f;
+  --c-other: #5b6b6f;
+  color-scheme: dark;
+  --land: #18292d;
+  --coast: #3d5559;
+  --water: #0b1619;
 }
 
 * {
@@ -1472,4 +1501,23 @@ button.left {
   margin: 4px 0 0;
   font-size: 14px;
   color: var(--muted);
+}
+
+/* 离线底图 */
+.map.leaflet-container {
+  background: var(--water);
+}
+.map-offline {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 30px;
+  top: auto;
+  transform: none;
+  width: auto;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  padding: 6px 8px 6px 10px;
 }

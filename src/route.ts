@@ -142,6 +142,15 @@ const PUBLIC_ENDPOINTS: Record<'car' | 'foot' | 'bike', string[]> = {
   bike: ['https://routing.openstreetmap.de/routed-bike/route/v1/driving/'],
 };
 
+// 随页面一起发布的预算路线（public/route-cache.json），不能联网时也能画真实道路
+let bundled: Promise<Record<string, { path: [number, number][]; km: number; hours: number }>> | null = null;
+function bundledRoutes() {
+  bundled ??= fetch('./route-cache.json')
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}));
+  return bundled;
+}
+
 export async function fetchRoadRoute(
   points: Place[],
   profile: 'car' | 'foot' | 'bike',
@@ -151,6 +160,8 @@ export async function fetchRoadRoute(
   const key = `route3:${profile}:${coords}`;
   const cached = cacheGet<{ path: [number, number][]; km: number; hours: number }>(key);
   if (cached) return cached;
+  const pre = (await bundledRoutes())[key];
+  if (pre) return pre;
   // 有自己的后端时先走后端代理（同源访问、服务端缓存），再直连公共服务
   const proxy = mapProxyBase();
   const endpoints = [...(proxy ? [`${proxy}/api/map/route/${profile}/`] : []), ...PUBLIC_ENDPOINTS[profile]];

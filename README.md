@@ -129,6 +129,14 @@ GitHub Pages 只能托管静态页面，**不能运行后端**；同步仍需要
 
 后端必须是 https 地址（GitHub Pages 是 https，浏览器会拦截调用 http 的请求）。API 默认允许跨域（用 Bearer 密钥鉴权、不用 Cookie）；如需限制，设置环境变量 `CORS_ORIGIN=https://<用户名>.github.io`。
 
+## 在 Claude 里打开
+
+`npm run build:artifact -- <输出目录>` 会把 App 转成 Claude Artifact 页面（`scripts/build-artifact.mjs`），连同预算好的路线 `route-cache.json` 一起发布。Artifact 里不能访问外部网站，所以：
+
+- 地图底图换成内置的澳洲东南部海岸线（Natural Earth 10m，`src/land-se-au.json`）；路线用预先算好的真实道路（`npm run build:routes` 重新生成）。
+- 景点照片、AI 推荐、家庭同步、导出 JSON、打印在 Artifact 里不可用，请用网页版。
+- 确认框默认通过、输入框使用默认名称（删除某天、采用旧方案前都会自动存档，可在「方案」里找回）。
+
 ## 开发
 
 ```bash

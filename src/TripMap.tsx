@@ -5,6 +5,13 @@ import type { Day, Mode, Place, Trip } from './types';
 import { fetchWiki, findPlace } from './geo';
 import { dayLegs, groupLegs, MODES, routeGroup, sketchSegment } from './route';
 import { mapProxyBase } from './sync';
+import LAND from './land-se-au.json';
+
+// 维州 / 南澳州界（大致沿东经 140.96°，从墨累河到海边）
+const VIC_SA_BORDER: [number, number][] = [
+  [-33.98, 140.965],
+  [-38.06, 140.965],
+];
 
 export const DAY_COLORS = ['#0f766e', '#c2410c', '#7c3aed', '#0369a1', '#be123c', '#4d7c0f', '#a16207', '#0e7490', '#9d174d'];
 export const dayColor = (i: number) => DAY_COLORS[i % DAY_COLORS.length];
@@ -123,6 +130,16 @@ export default function TripMap({
           use(idx + 1);
         } else {
           setTilesFailed(true);
+          // 离线底图：海岸线 + 州界，至少看得出海湾、半岛和袋鼠岛的位置
+          // SVG 属性不认 CSS 变量，这里读出主题里的实际颜色
+          const css = getComputedStyle(document.documentElement);
+          const tok = (n: string, fb: string) => css.getPropertyValue(n).trim() || fb;
+          L.geoJSON(LAND as GeoJSON.Feature, {
+            interactive: false,
+            attribution: '海岸线 &copy; Natural Earth',
+            style: { color: tok('--coast', '#9fb3b0'), weight: 1, fillColor: tok('--land', '#f6f8f4'), fillOpacity: 1 },
+          }).addTo(m).bringToBack();
+          L.polyline(VIC_SA_BORDER, { color: tok('--muted', '#5b6b6f'), weight: 1, dashArray: '4 6', interactive: false }).addTo(m);
         }
       });
     };
@@ -236,13 +253,8 @@ export default function TripMap({
       <div ref={el} className="map" style={height ? { height } : undefined} />
       {tilesFailed && !hideHelp && (
         <div className="map-offline">
-          <b>🗺️ 地图底图加载不了</b>
-          <p>
-            通常是当前的打开方式不允许联网，例如在聊天、邮件或文件 App 里直接预览。请用 Chrome、Safari、Edge
-            等浏览器打开网页版链接。
-          </p>
-          <p>下面的标记和连线仍按坐标显示，但看不到道路和地名。</p>
-          <button className="mini" onClick={() => setHideHelp(true)}>知道了</button>
+          <span>当前打开方式不能联网，已换成简易海岸线地图（没有街道和地名）。用浏览器打开网页版可看完整地图。</span>
+          <button className="icon" aria-label="关闭提示" onClick={() => setHideHelp(true)}>×</button>
         </div>
       )}
       {routing && <div className="map-note">正在获取真实路线…</div>}
