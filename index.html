@@ -8,6 +8,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // 兜底：几秒后页面仍是空白（脚本没加载成功，或打开的是未构建的源代码），给出说明而不是一片空白
+      setTimeout(function () {
+        var r = document.getElementById('root');
+        if (r && !r.firstChild) {
+          r.innerHTML =
+            '<div style="max-width:520px;margin:15vh auto;padding:0 20px;font:16px/1.7 -apple-system,PingFang SC,Microsoft YaHei,sans-serif">' +
+            '<h1 style="font-size:20px">页面没有加载成功</h1>' +
+            '<p>请稍等一两分钟后刷新。如果一直是这样，可能是网站正在更新，或者打开的是没有构建的源代码版本。</p>' +
+            '<p>网站管理员：请在 GitHub 仓库 Settings → Pages 里把 Source 设为「GitHub Actions」。</p></div>';
+        }
+      }, 6000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
