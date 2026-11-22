@@ -58,6 +58,8 @@ export interface Rec {
   bookingUrl?: string;
   /** 评分及来源，如「Booking.com 8.6/10」 */
   rating?: string;
+  /** 首选推荐 */
+  top?: boolean;
 }
 
 /** 交通方式 */

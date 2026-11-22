@@ -11,6 +11,7 @@ import Replan from './Replan';
 import { AskBar, PlanBoard, PlanMatrix } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import { applyVerifiedStays } from './stays';
+import Stays from './Stays';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -20,7 +21,7 @@ import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from '.
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
 
-type Tab = 'itinerary' | 'map' | 'costs' | 'checklist' | 'versions' | 'settings';
+type Tab = 'itinerary' | 'map' | 'stays' | 'costs' | 'checklist' | 'versions' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
 
 /** 线性图标（24×24，描边随文字颜色） */
@@ -28,6 +29,7 @@ const ICONS: Record<string, React.ReactNode> = {
   itinerary: <path d="M6 3v18M6 7h9a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h9" />,
   map: <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 0v14m6-12v14" />,
   costs: <path d="M3 7h18v12H3zM3 11h18M7 15h4" />,
+  stays: <path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 0 0-3-3h-8v6M6.5 12.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />,
   checklist: <path d="m4 7 2 2 4-4M4 16l2 2 4-4M13 7h7M13 16h7" />,
   versions: <path d="M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />,
   settings: (
@@ -45,6 +47,7 @@ export function Icon({ name }: { name: string }) {
 const TABS: { key: Tab; label: string }[] = [
   { key: 'itinerary', label: '行程' },
   { key: 'map', label: '地图' },
+  { key: 'stays', label: '住宿' },
   { key: 'costs', label: '费用' },
   { key: 'checklist', label: '清单' },
   { key: 'versions', label: '方案' },
@@ -347,6 +350,7 @@ export default function App() {
             </>
           )}
           {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
+          {tab === 'stays' && <Stays trip={trip} update={update} />}
           {tab === 'costs' && <Costs trip={trip} update={update} />}
           {tab === 'checklist' && <Checklist trip={trip} update={update} />}
           {tab === 'versions' && (
@@ -506,6 +510,7 @@ function TripStatus({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
             <span>
               还有 <b>{s.unbooked}</b> 晚住宿没订
             </span>
+            <button className="link" onClick={() => goTo('stays')}>去选住宿 →</button>
           </li>
         )}
         <li>

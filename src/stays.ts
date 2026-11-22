@@ -22,7 +22,7 @@ export function verifiedFor(place: string): VerifiedStay[] | undefined {
   return VERIFIED_STAYS[place];
 }
 
-const toRec = (s: VerifiedStay): Rec => ({
+const toRec = (s: VerifiedStay, i: number): Rec => ({
   id: newId(),
   name: s.name,
   where: s.town,
@@ -34,6 +34,7 @@ const toRec = (s: VerifiedStay): Rec => ({
   ...(s.officialUrl ? { url: s.officialUrl } : {}),
   ...(s.bookingUrl ? { bookingUrl: s.bookingUrl } : {}),
   ...(s.rating ? { rating: s.rating } : {}),
+  ...(i === 0 ? { top: true } : {}),
 });
 
 /**
@@ -48,7 +49,7 @@ export function applyVerifiedStaysToDay(d: Day): boolean {
   const fresh = list.map(toRec);
   const same =
     d.stayOptions.length >= fresh.length &&
-    fresh.every((f) => d.stayOptions.some((o) => o.name === f.name && o.url === f.url && o.bookingUrl === f.bookingUrl && o.rating === f.rating));
+    fresh.every((f) => d.stayOptions.some((o) => o.name === f.name && o.url === f.url && o.bookingUrl === f.bookingUrl && o.rating === f.rating && !!o.top === !!f.top));
   if (same) return false;
   for (const r of fresh) r.picked = r.name === pickedName;
   const keep = d.stayOptions.filter((o) => o.picked && !fresh.some((f) => f.name === o.name));

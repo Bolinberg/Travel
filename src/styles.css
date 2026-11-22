@@ -1939,3 +1939,121 @@ button.left {
 .link.strong {
   font-weight: 700;
 }
+
+/* ---------- 住宿总览 ---------- */
+.stays-head h2 {
+  margin: 4px 0 6px;
+}
+.stays-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.stays-sum b {
+  color: var(--ink);
+}
+.stays-note {
+  margin: 8px 0 14px;
+  line-height: 1.55;
+}
+.stay-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.stay-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.stay-group-head h3 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+.stay-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--sunk);
+  border-radius: 8px;
+}
+.stay-booked {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.stay-options {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+@media (min-width: 720px) {
+  .stay-options {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.stay-options .stay-opt {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+.stay-options .stay-opt.picked {
+  border: 2px solid var(--sign);
+  padding: 9px;
+  background: var(--good-soft);
+}
+.stay-opt p {
+  margin: 2px 0;
+}
+.stay-opt-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+}
+.stay-opt-name {
+  line-height: 1.3;
+}
+.stay-opt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.stay-opt-meta .rating {
+  color: var(--amber-ink);
+  font-weight: 700;
+}
+.tag.top {
+  flex: none;
+  background: var(--sign);
+  color: var(--sign-ink);
+}
+.stay-group-head .flag {
+  flex: none;
+  background: var(--sunk);
+  padding: 2px 8px;
+}
+.stay-group-head .flag.warn {
+  background: var(--amber-soft);
+}
+.stay-group-head .flag.ok {
+  background: var(--good-soft);
+}
+.stay-options .stay-opt:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.stay-options .stay-opt.picked:last-child {
+  border-bottom: 2px solid var(--sign);
+}
