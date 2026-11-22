@@ -71,7 +71,7 @@ function initialStore(): Store {
 
 /* 已经用过旧版本的设备：提示一次新的 6 天方案 */
 // 家里最终选定的方案：9 天（袋鼠岛 2 晚、回程走格兰扁）
-const KI_OFFER_KEY = 'travel-planner.offer.nine9';
+const KI_OFFER_KEY = 'travel-planner.offer.nine9-gor';
 const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === NINE_NAME;
 function offerDismissed(): boolean {
   try {
@@ -194,8 +194,8 @@ export default function App() {
       {kiOffer && !hasKiTrip(store) && (
         <section className="offer" aria-label="新方案">
           <div>
-            <b>新的 9 天方案已经做好</b>
-            <p>大洋路 → 甘比尔山 → 阿德莱德（熊猫、博物馆）→ 袋鼠岛住 2 晚 → 回程走格兰扁。其他方案都保留在「我的行程」里。</p>
+            <b>9 天方案已更新：第 1 天走大洋路全程</b>
+            <p>Torquay → Lorne → Apollo Bay → 十二门徒岩看日落，住 Port Campbell；之后甘比尔山 → 阿德莱德（熊猫）→ 袋鼠岛住 2 晚 → 格兰扁回家。其他方案都保留在「我的行程」里。</p>
           </div>
           <div className="row wrap">
             <button

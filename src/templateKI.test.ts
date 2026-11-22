@@ -97,7 +97,10 @@ describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () =
     expect(kiNights).toBe(2);
     expect(t.days[7].to).toBe('Halls Gap VIC');
     expect(t.days.flatMap((d) => d.stops)).toContain('The Pinnacle Lookout, Grampians VIC');
-    expect(Math.max(...t.days.map((d) => d.driveHours))).toBeLessThanOrEqual(5.1);
+    expect(Math.max(...t.days.map((d) => d.driveHours))).toBeLessThanOrEqual(5.3);
+    // 第 1 天走大洋路全程
+    expect(t.days[0].stops).toEqual(expect.arrayContaining(['Lorne VIC', 'Apollo Bay VIC', 'Twelve Apostles VIC']));
+    expect(t.days[1].stops).toContain('Blue Lake, Mount Gambier SA');
     expect(new Set(t.days.map((d) => d.id)).size).toBe(9);
     for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
     for (const e of t.expenses) if (e.dayId) expect(t.days.some((d) => d.id === e.dayId)).toBe(true);

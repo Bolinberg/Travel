@@ -393,10 +393,10 @@ export function createSevenDayTrip(): Trip {
 
 /* ------------------------------------------------------------------
  * 9 天往返（默认）：8 天方案的基础上，袋鼠岛住 2 晚、回程走格兰扁。
- * 车程（OSRM）：4.6 / 4.5 / 4.3 / 步行 / 3.3 / 2.1 / 3.8 / 5.1 / 3.6 小时（第 8 天略超 5 小时）。
+ * 第 1 天走大洋路全程住 Port Campbell。车程（OSRM）：4.8 / 5.3 / 4.3 / 步行 / 3.3 / 2.1 / 3.8 / 5.1 / 3.6 小时（第 2、8 天略超 5 小时）。
  * ------------------------------------------------------------------ */
 
-export const NINE_NAME = '墨尔本 → 阿德莱德 → 袋鼠岛 → 格兰扁 → 墨尔本 9 天';
+export const NINE_NAME = '大洋路 → 阿德莱德 → 袋鼠岛 → 格兰扁 9 天';
 
 export function createNineDayTrip(): Trip {
   const grand = createGrandTrip();
@@ -450,7 +450,30 @@ export function createNineDayTrip(): Trip {
     [], pick('Ballarat', 'dining', '午餐'),
   );
 
-  const days = [clone(d1), clone(d2), clone(d3), city, toKI, kiDay, leaveKI, toGrampians, home];
+  // 第 1 天走大洋路全程，住 Port Campbell（可以在十二门徒岩看日落）；第 2 天一路到 Robe
+  const gor = day(
+    '大洋路全程 → 十二门徒岩日落', 'Melbourne VIC', 'Port Campbell VIC', 296, 4.8,
+    ['Torquay VIC', 'Bells Beach VIC', 'Split Point Lighthouse, Aireys Inlet VIC', 'Lorne VIC', 'Apollo Bay VIC', 'Twelve Apostles VIC', 'Loch Ard Gorge VIC'],
+    stay('Port Campbell 住宿', 230),
+    '沿海岸开完整段大洋路：Torquay → Bells Beach → Split Point 灯塔 → Lorne（午餐）→ Apollo Bay，之后转进 Otway 雨林路段，弯多注意晕车。住 Port Campbell，离十二门徒岩约 10 分钟，可以傍晚去看日落（12 月日落约 20:40）。早上一早出发，避开周五出城车流。',
+    [
+      rec({ name: 'NRMA Port Campbell Holiday Park', where: 'Port Campbell', type: '度假村小屋 / 别墅', price: '12 月价格以官网为准', note: '镇上最大的家庭型营地，有家庭房；评分约 8.0/10' }),
+      rec({ name: 'Port Campbell Parkview Motel & Apartments', where: 'Port Campbell', type: '汽车旅馆 / 公寓', price: '价格以官网为准', note: '步行约 10 分钟到游客中心和海滩，免费停车' }),
+      rec({ name: 'Portside Motel', where: 'Port Campbell', type: '汽车旅馆', price: '价格以官网为准', note: '有客人评价房间够大、适合带孩子' }),
+    ],
+    [...pick('Lorne', 'dining', '午餐'), ...pick('Port Campbell', 'dining', '晚餐')],
+  );
+  const toRobe = day(
+    'Warrnambool · Port Fairy · 甘比尔山蓝湖 → Robe', 'Port Campbell VIC', 'Robe SA', 389, 5.3,
+    ['London Bridge, Port Campbell VIC', 'Warrnambool VIC', 'Port Fairy VIC', 'Mount Gambier SA', 'Blue Lake, Mount Gambier SA', 'Umpherston Sinkhole SA'],
+    stay('Robe 住宿', 260),
+    '全程最长的一天（约 5.3 小时）：早上顺路看伦敦拱门，Port Fairy 喝咖啡，甘比尔山午餐、看蓝湖和天坑花园，傍晚到 Robe。进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）；南澳时间慢 30 分钟，等于多出半小时。',
+    pick('Robe', 'stay'), [...pick('Mount Gambier', 'dining', '午餐'), ...pick('Robe', 'dining', '晚餐')],
+  );
+  void d1;
+  void d2;
+
+  const days = [gor, toRobe, clone(d3), city, toKI, kiDay, leaveKI, toGrampians, home];
 
   const expenses: Expense[] = [
     { id: newId(), title: '阿德莱德动物园家庭票（约 $124，网上先买）', category: 'activity', amount: 124, dayId: city.id, paid: false },
@@ -465,6 +488,7 @@ export function createNineDayTrip(): Trip {
 
   const places = [...grand.places];
   const extra: Place[] = [
+    { name: 'Port Campbell VIC', label: 'Port Campbell', lat: -38.6195, lng: 142.995, wiki: 'Port Campbell, Victoria', desc: '十二门徒岩旁的海边小镇，住这里方便傍晚去看日落。' },
     { name: 'Kingscote, Kangaroo Island SA', label: 'Kingscote 金斯科特', lat: -35.6531, lng: 137.6342, wiki: 'Kingscote, South Australia', desc: '袋鼠岛最大的镇，补给、加油、吃海鲜方便。' },
   ];
   for (const p of extra) if (!places.some((x) => x.name === p.name)) places.push(p);
