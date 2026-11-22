@@ -118,7 +118,9 @@ describe('route comparison A vs B from Point Cook', () => {
     expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A]);
     const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
     const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
-    expect(a.days).toHaveLength(8);
+    expect(a.days).toHaveLength(7);
+    expect(a.days[5].to).toBe('Bordertown SA');
+    expect(a.days.filter((d) => d.to === 'Vivonne Bay SA' && d.accommodation).length).toBe(2);
     expect(b.days).toHaveLength(9);
     expect(a.days[0].from).toBe('Point Cook VIC');
     expect(a.days[0].to).toBe('Mount Gambier SA');

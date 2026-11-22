@@ -499,14 +499,14 @@ export function createNineDayTrip(): Trip {
 
 /* ------------------------------------------------------------------
  * 路线对比（从 Point Cook 出发）：
- *   A：第 1 天大洋路一路开到甘比尔山住蓝湖，第 2 天直达阿德莱德（8 天）
+ *   A：第 1 天大洋路一路开到甘比尔山住蓝湖，第 2 天直达阿德莱德；回程离岛后住 Bordertown，第 2 天到家（7 天）
  *   B：第 1 天大洋路住 Port Campbell，第 2 天住 Robe，第 3 天到阿德莱德（9 天）
  * 两个方案作为「备选方案」放进行程的版本列表，在「方案」页并排对比。
  * 车程（OSRM，从 Point Cook）：A 7.9 / 5.4 …；B 4.4 / 5.3 / 4.3 …
  * ------------------------------------------------------------------ */
 
-export const COMPARE_NAME = 'Point Cook 出发 · 两条大洋路路线对比';
-export const COMPARE_A = 'A：第 1 天直达蓝湖（8 天）';
+export const COMPARE_NAME = 'Point Cook 出发 · A/B 路线对比';
+export const COMPARE_A = 'A：去程直达蓝湖、回程 2 天（7 天）';
 export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
 
 const POINT_COOK: Place = {
@@ -537,14 +537,31 @@ export function createRouteComparisonTrip(): Trip {
     '约 5.4 小时，走内陆经 Naracoorte、Keith、Tailem Bend，不经过 Robe 和库隆（走海边要 6 小时）。早上可再看一眼蓝湖；Hahndorf 德国村晚餐后进城。',
     pick('Adelaide', 'stay'), pick('Hahndorf', 'dining', '晚餐'),
   );
-  const rest = b.days.slice(3).map(clone);
-  const aDays = [a1, a2, ...rest];
-  const idMap = new Map(b.days.slice(3).map((d, i) => [d.id, rest[i].id]));
+  // 阿德莱德、袋鼠岛 2 晚沿用 B；回程压缩成 2 天，中间住 Bordertown
+  const rest = b.days.slice(3, 6).map(clone);
+  const a6 = day(
+    '离岛 → 渡轮 → Bordertown', 'Vivonne Bay SA', 'Bordertown SA', 451, 5.6,
+    ['Penneshaw SA', 'Cape Jervis SA', 'Tailem Bend SA'],
+    stay('Bordertown 住宿', 150),
+    '约 5.6 小时车程加渡轮（开船前 30 分钟到码头，航程 45 分钟），要订上午的船，才能天黑前到 Bordertown。镇上有白袋鼠保护区（免费）。',
+    [rec({ name: 'Bordertown Motel', where: 'Bordertown', type: '汽车旅馆（3 星）', price: '约 $70–145/晚（各平台报价不一）', note: '有游乐场和婴儿床、餐厅；房间较旧但员工友善，评分约 7.4/10' })],
+    KI_DINING.filter((r) => r.where === 'Penneshaw'),
+    { 'Cape Jervis SA': 'ferry' },
+  );
+  const a7 = day(
+    'Bordertown → Ballarat → 回家', 'Bordertown SA', 'Point Cook VIC', 452, 6.0,
+    ['Horsham VIC', 'Ballarat VIC'],
+    null,
+    '约 6 小时，进入维州后时间快 30 分钟。Horsham 和 Ballarat（午餐）各休息一次。想顺路看格兰扁可从 Horsham 绕 Halls Gap，多约 0.5 小时车程（不含步道）。',
+    [], pick('Ballarat', 'dining', '午餐'),
+  );
+  const aDays = [a1, a2, ...rest, a6, a7];
+  const idMap = new Map(b.days.slice(3, 6).map((d, i) => [d.id, rest[i].id]));
   const a: Trip = {
     ...structuredClone(b),
     id: b.id,
     days: aDays,
-    budget: b.budget - 300,
+    budget: b.budget - 700,
     expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? idMap.get(e.dayId) ?? null : null })),
   };
 

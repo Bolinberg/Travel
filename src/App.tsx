@@ -71,7 +71,7 @@ function initialStore(): Store {
 
 /* 已经用过旧版本的设备：提示一次新的 6 天方案 */
 // 家里最终选定的方案：9 天（袋鼠岛 2 晚、回程走格兰扁）
-const KI_OFFER_KEY = 'travel-planner.offer.compare-ab';
+const KI_OFFER_KEY = 'travel-planner.offer.compare-ab2';
 const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === COMPARE_NAME;
 function offerDismissed(): boolean {
   try {
@@ -194,8 +194,8 @@ export default function App() {
       {kiOffer && !hasKiTrip(store) && (
         <section className="offer" aria-label="新方案">
           <div>
-            <b>两条大洋路路线的对比已经准备好</b>
-            <p>从 Point Cook 出发。A：第 1 天一路开到蓝湖，第 2 天到阿德莱德（8 天）；B：住 Port Campbell 和 Robe，第 3 天到阿德莱德（9 天）。在「方案」页并排看车程、费用和地图。</p>
+            <b>A/B 路线对比已更新</b>
+            <p>从 Point Cook 出发。A：去程第 1 天直达蓝湖、回程 2 天中间住 Bordertown（7 天）；B：住 Port Campbell、Robe，回程走格兰扁（9 天）。在「方案」页并排看车程、费用和地图。</p>
           </div>
           <div className="row wrap">
             <button

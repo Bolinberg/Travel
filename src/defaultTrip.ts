@@ -284,7 +284,7 @@ import { createGrandTrip, createKangarooIslandTrip, createLoopTrip, createNineDa
 export const TEMPLATES = [
   {
     key: 'compare-ab',
-    label: 'Point Cook 出发：两条大洋路路线对比（A 第 1 天直达蓝湖 / B 住 Port Campbell、Robe）',
+    label: 'Point Cook 出发：A/B 路线对比（A 7 天：直达蓝湖、回程住 Bordertown / B 9 天：住 Port Campbell、Robe、格兰扁）',
     create: createRouteComparisonTrip,
   },
   {
