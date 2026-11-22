@@ -8,7 +8,7 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
-import { createGrandTrip, GRAND_NAME } from './templateKI';
+import { createNineDayTrip, NINE_NAME } from './templateKI';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -65,14 +65,14 @@ function initialStore(): Store {
   const s = loadStore();
   if (s) return s;
   // 第一次打开：直接用家里确定的 7 天往返方案
-  const t = createGrandTrip();
+  const t = createNineDayTrip();
   return { activeId: t.id, trips: [t] };
 }
 
 /* 已经用过旧版本的设备：提示一次新的 6 天方案 */
-// 家里最终选定的方案：8 天沿大洋路往返
-const KI_OFFER_KEY = 'travel-planner.offer.grand8-final';
-const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === GRAND_NAME;
+// 家里最终选定的方案：9 天（袋鼠岛 2 晚、回程走格兰扁）
+const KI_OFFER_KEY = 'travel-planner.offer.nine9';
+const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === NINE_NAME;
 function offerDismissed(): boolean {
   try {
     return localStorage.getItem(KI_OFFER_KEY) === 'dismissed';
@@ -194,26 +194,26 @@ export default function App() {
       {kiOffer && !hasKiTrip(store) && (
         <section className="offer" aria-label="新方案">
           <div>
-            <b>换回 8 天沿大洋路的方案</b>
-            <p>十二门徒岩 → 甘比尔山 → Robe → 库隆 → 阿德莱德（熊猫、博物馆美术馆）→ 袋鼠岛 → 回墨尔本，每天车程 5 小时以内。其他方案都保留在「我的行程」里。</p>
+            <b>新的 9 天方案已经做好</b>
+            <p>大洋路 → 甘比尔山 → 阿德莱德（熊猫、博物馆）→ 袋鼠岛住 2 晚 → 回程走格兰扁。其他方案都保留在「我的行程」里。</p>
           </div>
           <div className="row wrap">
             <button
               className="primary"
               onClick={() => {
                 // 已经有 8 天方案就直接切过去，不重复创建
-                const existing = store.trips.find((x) => x.name === GRAND_NAME);
+                const existing = store.trips.find((x) => x.name === NINE_NAME);
                 if (existing) {
                   switchTrip(existing.id);
                 } else {
-                  const t = createGrandTrip();
+                  const t = createNineDayTrip();
                   t.startDate = trip.startDate; // 沿用你已经定好的出发日期
                   addTrip(t);
                 }
                 window.scrollTo(0, 0);
               }}
             >
-              切换到 8 天方案
+              切换到 9 天方案
             </button>
             <button
               onClick={() => {

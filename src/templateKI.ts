@@ -390,3 +390,84 @@ export function createSevenDayTrip(): Trip {
 
   return { ...grand, id: newId(), name: SEVEN_NAME, budget: 6500, days, expenses };
 }
+
+/* ------------------------------------------------------------------
+ * 9 天往返（默认）：8 天方案的基础上，袋鼠岛住 2 晚、回程走格兰扁。
+ * 车程（OSRM）：4.6 / 4.5 / 4.3 / 步行 / 3.3 / 2.1 / 3.8 / 5.1 / 3.6 小时（第 8 天略超 5 小时）。
+ * ------------------------------------------------------------------ */
+
+export const NINE_NAME = '墨尔本 → 阿德莱德 → 袋鼠岛 → 格兰扁 → 墨尔本 9 天';
+
+export function createNineDayTrip(): Trip {
+  const grand = createGrandTrip();
+  const clone = (d: Day): Day => ({ ...structuredClone(d), id: newId() });
+  const [d1, d2, d3, cityTpl, toKITpl] = grand.days;
+
+  // 阿德莱德这天放慢：动物园 + 植物园 + 博物馆，美术馆和图书馆看体力
+  const city = clone(cityTpl);
+  city.stops = ['Adelaide Zoo SA', 'Adelaide Botanic Garden SA', 'South Australian Museum SA'];
+  city.km = 4;
+  city.driveHours = 1;
+  city.notes =
+    '慢慢走：9:30 动物园开门先看熊猫（家庭约 3 小时）→ 穿过植物园吃午饭 → 下午南澳博物馆（恐龙、鲸鱼骨架，免费）。体力还够再去隔壁的美术馆或州立图书馆，场馆 17:00 关门。傍晚可坐电车去 Glenelg 看日落。36°C 以上植物园温室会提前关。';
+
+  const toKI = clone(toKITpl);
+  toKI.accommodation = stay('袋鼠岛西南部住宿（第 1 晚，连住 2 晚）', 260);
+
+  const kiDay = day(
+    '袋鼠岛：神奇岩石 · 海军上将拱门', 'Vivonne Bay SA', 'Vivonne Bay SA', 117, 2.1,
+    ['Remarkable Rocks SA', 'Admirals Arch SA'],
+    stay('袋鼠岛西南部住宿（第 2 晚）', 260),
+    '不用赶船的一天：上午去弗林德斯蔡斯国家公园（家庭一日票约 $38），看神奇岩石和拱门下的海豹；下午回 Vivonne Bay 海滩玩。黄昏后岛上动物多，尽量天黑前回到住处。大风天岩石和拱门可能关闭。',
+    KI_STAYS, KI_DINING.filter((r) => r.where === 'Vivonne Bay'),
+  );
+
+  const leaveKI = day(
+    '离岛 → 渡轮 → Tailem Bend', 'Vivonne Bay SA', 'Tailem Bend SA', 298, 3.8,
+    ['Kingscote, Kangaroo Island SA', 'Penneshaw SA', 'Cape Jervis SA'],
+    stay('Tailem Bend 住宿', 160),
+    'Kingscote 午餐（海鲜），Penneshaw 坐下午的渡轮（开船前 30 分钟到码头），回大陆后往东开到墨累河边的 Tailem Bend 过夜，给第二天去格兰扁缩短路程。',
+    [], [
+      rec({ name: 'Kangaroo Island Fresh Seafoods', where: 'Kingscote', type: '海鲜外卖 · 午餐', price: '$–$$', note: '本地生蚝、扇贝和炸鱼薯条（营业时间先电话确认）' }),
+      ...KI_DINING.filter((r) => r.where === 'Penneshaw'),
+    ],
+    { 'Cape Jervis SA': 'ferry' },
+  );
+
+  const toGrampians = day(
+    '回程 → 格兰扁 Halls Gap', 'Tailem Bend SA', 'Halls Gap VIC', 399, 5.1,
+    ['Bordertown SA', 'Horsham VIC'],
+    stay('Halls Gap 住宿', 250),
+    '约 5.1 小时，是全程最长的一天，Bordertown（白袋鼠保护区）和 Horsham 各休息一次。进入维州后时间快 30 分钟。傍晚 Halls Gap 的草地上常有成群袋鼠。',
+    pick('Halls Gap', 'stay'), pick('Halls Gap', 'dining', '晚餐'),
+  );
+
+  const home = day(
+    '格兰扁 Pinnacle → Ballarat → 回家', 'Halls Gap VIC', 'Melbourne VIC', 275, 3.6,
+    ['The Pinnacle Lookout, Grampians VIC', 'Ballarat VIC'],
+    null,
+    '早上走 Pinnacle 步道（从 Sundial 停车场往返约 4 km，带孩子约 2 小时），Ballarat 午餐后回家。',
+    [], pick('Ballarat', 'dining', '午餐'),
+  );
+
+  const days = [clone(d1), clone(d2), clone(d3), city, toKI, kiDay, leaveKI, toGrampians, home];
+
+  const expenses: Expense[] = [
+    { id: newId(), title: '阿德莱德动物园家庭票（约 $124，网上先买）', category: 'activity', amount: 124, dayId: city.id, paid: false },
+    { id: newId(), title: 'SeaLink 渡轮往返（1 车 + 2 大 2 小，最低约 $496，12 月旺季会更贵，以报价为准）', category: 'transport', amount: 600, dayId: toKI.id, paid: false },
+    { id: newId(), title: '海狮湾家庭票（约 $110）', category: 'activity', amount: 110, dayId: toKI.id, paid: false },
+    { id: newId(), title: '小撒哈拉滑沙板租用（约 $37/块 × 2）', category: 'activity', amount: 74, dayId: toKI.id, paid: false },
+    { id: newId(), title: '弗林德斯蔡斯国家公园家庭一日票（约 $38）', category: 'activity', amount: 38, dayId: kiDay.id, paid: false },
+    { id: newId(), title: '阿德莱德停车（2 晚）', category: 'transport', amount: 60, dayId: null, paid: false },
+    { id: newId(), title: '零食 / 饮用水 / 路上补给', category: 'food', amount: 160, dayId: null, paid: false },
+    { id: newId(), title: '出发前汽车保养检查', category: 'other', amount: 200, dayId: null, paid: false },
+  ];
+
+  const places = [...grand.places];
+  const extra: Place[] = [
+    { name: 'Kingscote, Kangaroo Island SA', label: 'Kingscote 金斯科特', lat: -35.6531, lng: 137.6342, wiki: 'Kingscote, South Australia', desc: '袋鼠岛最大的镇，补给、加油、吃海鲜方便。' },
+  ];
+  for (const p of extra) if (!places.some((x) => x.name === p.name)) places.push(p);
+
+  return { ...grand, id: newId(), name: NINE_NAME, budget: 7500, days, expenses, places };
+}

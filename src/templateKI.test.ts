@@ -85,3 +85,22 @@ describe('7-day Blue Lake round trip', () => {
     expect(t.expenses.filter((e) => e.dayId).length).toBeGreaterThan(3);
   });
 });
+
+import { createNineDayTrip } from './templateKI';
+
+describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () => {
+  const t = createNineDayTrip();
+  it('has the requested shape', () => {
+    expect(t.days).toHaveLength(9);
+    expect(t.days[8].to).toBe('Melbourne VIC');
+    const kiNights = t.days.filter((d) => d.to === 'Vivonne Bay SA' && d.accommodation).length;
+    expect(kiNights).toBe(2);
+    expect(t.days[7].to).toBe('Halls Gap VIC');
+    expect(t.days.flatMap((d) => d.stops)).toContain('The Pinnacle Lookout, Grampians VIC');
+    expect(Math.max(...t.days.map((d) => d.driveHours))).toBeLessThanOrEqual(5.1);
+    expect(new Set(t.days.map((d) => d.id)).size).toBe(9);
+    for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
+    for (const e of t.expenses) if (e.dayId) expect(t.days.some((d) => d.id === e.dayId)).toBe(true);
+    expect(summarize(t).nights).toBe(8);
+  });
+});
