@@ -152,18 +152,27 @@ function Delta({ before, after, fmt, lowerIsGood = true }: { before: number; aft
   );
 }
 
-function Comparison({
+export function Comparison({
   trip,
   proposal,
   onApply,
   onCancel,
   onSave,
+  applyLabel,
+  saveLabel = '另存为方案',
+  note = '应用前会自动保存当前版本；也可以先「另存为方案」，到「方案」页和其他方案一起对比。',
+  preferSave = false,
 }: {
   trip: Trip;
   proposal: Proposal;
   onApply: (t: Trip) => void;
   onCancel: () => void;
   onSave: (t: Trip) => void;
+  applyLabel?: string;
+  saveLabel?: string;
+  note?: string;
+  /** 主按钮是「另存为新方案」（从「+ 新方案」进来时） */
+  preferSave?: boolean;
 }) {
   const after = useMemo(() => proposalTrip(trip, proposal), [trip, proposal]);
   const c = useMemo(() => compare(trip, after), [trip, after]);
@@ -264,12 +273,14 @@ function Comparison({
         })}
       </ol>
 
-      <div className="row sticky-actions">
-        <button className="primary" onClick={() => onApply(after)}>确认应用（{after.days.length} 天）</button>
-        <button onClick={() => onSave(after)}>另存为方案</button>
+      <div className="row wrap sticky-actions">
+        <button className={preferSave ? '' : 'primary'} onClick={() => onApply(after)}>
+          {applyLabel ?? `确认应用（${after.days.length} 天）`}
+        </button>
+        <button className={preferSave ? 'primary' : ''} onClick={() => onSave(after)}>{saveLabel}</button>
         <button onClick={onCancel}>放弃</button>
       </div>
-      <p className="muted small">应用前会自动保存当前版本；也可以先「另存为方案」，到「方案」页和其他方案一起对比。</p>
+      <p className="muted small">{note}</p>
     </div>
   );
 }

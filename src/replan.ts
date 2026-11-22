@@ -261,6 +261,14 @@ export function proposalFromAi(trip: Trip, plan: AiReplan): Proposal {
   const usedIds = new Set<string>();
   const days: ProposedDay[] = plan.days.map((d) => {
     const src = d.sources.map((n) => n - 1);
+    const orig = src.length === 1 ? trip.days[src[0]] : undefined;
+    if (
+      d.kind === 'same' && orig && !usedIds.has(orig.id) &&
+      orig.from === d.from && orig.to === d.to && !!orig.accommodation === d.overnight
+    ) {
+      usedIds.add(orig.id);
+      return { day: clone(orig), sources: src, kind: 'same' as const, reason: d.reason };
+    }
     // 优先沿用「同一过夜地」的原日期：住宿、住宿推荐、id（保留开销关联）
     const stayFrom = src.map((i) => trip.days[i]).find((o) => o.to === d.to && o.accommodation) ??
       trip.days.find((o) => o.to === d.to && o.accommodation && !usedIds.has(o.id));

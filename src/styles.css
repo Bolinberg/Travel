@@ -1572,3 +1572,362 @@ button.left {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ---------- 规划工作台：方案卡片 / 对比矩阵 / 自然语言调整 ---------- */
+
+.board {
+  margin: 4px 0 14px;
+}
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.board-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.seg-toggle {
+  display: inline-flex;
+  background: var(--sunk);
+  border-radius: 999px;
+  padding: 3px;
+}
+.seg-toggle button {
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.seg-toggle button.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.board-cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(200px, 1fr);
+  gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+}
+.pcard {
+  scroll-snap-align: start;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  text-align: left;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.pcard:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.pcard.on {
+  border: 2px solid var(--sign);
+  padding: 11px;
+}
+.pcard-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pcard-tag {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--sign);
+  color: var(--sign-ink);
+  font-weight: 800;
+  font-size: 13px;
+}
+.pcard-now {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sign);
+  margin-left: 6px;
+}
+.pcard-name {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.pcard-rows {
+  display: grid;
+  gap: 5px;
+}
+.pcard-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pcard-row b {
+  justify-self: end;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pcard-row .warn-text {
+  color: var(--amber-ink);
+}
+.pb-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.pb-fill {
+  display: block;
+  height: 100%;
+  background: var(--sign);
+  border-radius: 2px;
+}
+.pb-fill.warn {
+  background: var(--amber);
+}
+.pcard-flag {
+  font-size: 12px;
+  color: var(--amber-ink);
+  background: var(--amber-soft);
+  border-radius: 6px;
+  padding: 3px 6px;
+  justify-self: start;
+}
+.pcard.new {
+  border-style: dashed;
+  background: none;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  color: var(--link);
+  min-height: 140px;
+}
+.pcard-plus {
+  font-size: 28px;
+  line-height: 1;
+}
+
+/* 逐日对比矩阵 */
+.matrix .table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.mx {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  font-size: 13px;
+}
+.mx th,
+.mx td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+  min-width: 150px;
+}
+.mx .mx-day {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 56px;
+  width: 56px;
+  background: var(--sunk);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mx thead th {
+  background: var(--sunk);
+}
+.mx thead th.on {
+  box-shadow: inset 0 -3px 0 var(--sign);
+}
+.mx-head {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--ink);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.mx-head:disabled {
+  opacity: 1;
+}
+.mx-switch {
+  font-size: 11px;
+  color: var(--link);
+  font-weight: 600;
+}
+.mx-route {
+  font-weight: 600;
+  line-height: 1.35;
+}
+.mx-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  align-items: center;
+}
+.mx-stay {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mx-empty {
+  color: var(--muted);
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--sunk) 6px 7px);
+}
+.hchip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.hchip.h0 { background: var(--sunk); color: var(--muted); }
+.hchip.h1 { background: var(--good-soft); color: var(--good); }
+.hchip.h2 { background: #d9e7ee; color: #2f5f78; }
+.hchip.h3 { background: var(--amber-soft); color: var(--amber-ink); }
+.hchip.h4 { background: #f6d9d5; color: var(--bad); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hchip.h2 { background: #1c3440; color: #8cc3dc; }
+  :root:not([data-theme="light"]) .hchip.h4 { background: #3d1d1a; color: var(--bad); }
+}
+:root[data-theme="dark"] .hchip.h2 { background: #1c3440; color: #8cc3dc; }
+:root[data-theme="dark"] .hchip.h4 { background: #3d1d1a; color: var(--bad); }
+
+/* 「告诉我怎么改」：手机固定在底部导航上方，宽屏贴在内容底部 */
+.tab-itinerary.app {
+  padding-bottom: calc(var(--dock-h) + 150px + env(safe-area-inset-bottom));
+}
+.ask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--dock-h) + env(safe-area-inset-bottom));
+  z-index: 899;
+  padding: 8px 12px 10px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 18px rgb(0 0 0 / 0.06);
+}
+.ask-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sign);
+  margin-bottom: 4px;
+}
+.ask-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.ask-row textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 120px;
+  resize: none;
+  font-size: 16px;
+  field-sizing: content;
+}
+.ask-row button {
+  height: 42px;
+  white-space: nowrap;
+}
+.ask-status {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ask-status.err {
+  color: var(--bad);
+}
+.ask-examples {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-top: 6px;
+  scrollbar-width: none;
+}
+.chip-x {
+  flex: none;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--sunk);
+  border: 0;
+  color: var(--ink);
+}
+@media (min-width: 720px) {
+  .tab-itinerary.app {
+    padding-bottom: 48px;
+  }
+  .ask {
+    position: sticky;
+    bottom: 12px;
+    margin-top: 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+}
+
+/* 结果预览浮层 */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgb(10 20 22 / 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet-inner {
+  width: 100%;
+  max-width: 760px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border-radius: 16px 16px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .sheet {
+    align-items: center;
+  }
+  .sheet-inner {
+    border-radius: 16px;
+    max-height: 88vh;
+  }
+}

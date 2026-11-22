@@ -302,6 +302,8 @@ export interface AiReplanDay {
   notes: string;
 }
 export interface AiReplan {
+  /** 方案的短名（自然语言调整时给出） */
+  title?: string;
   summary: string;
   days: AiReplanDay[];
   places: { name: string; label: string; lat: number; lng: number; desc: string }[];
@@ -384,7 +386,7 @@ function replanPrompt(trip: Trip, target: number, request: string, prefs: string
     .join('\n\n');
 }
 
-export function validateReplan(input: unknown, origDays: number, target: number): AiReplan {
+export function validateReplan(input: unknown, origDays: number, target: number | null): AiReplan {
   const o = input as Record<string, any>;
   if (!o || !isStr(o.summary) || !Array.isArray(o.days) || !Array.isArray(o.places)) {
     throw new AiError('AI 返回的方案不完整，请重试');
@@ -410,11 +412,13 @@ export function validateReplan(input: unknown, origDays: number, target: number)
       notes: isStr(d.notes) ? d.notes : '',
     };
   });
-  if (days.length !== target) throw new AiError(`AI 给出了 ${days.length} 天，而不是 ${target} 天，请重试`);
+  if (target !== null && days.length !== target) throw new AiError(`AI 给出了 ${days.length} 天，而不是 ${target} 天，请重试`);
+  if (!days.length || days.length > 40) throw new AiError('AI 给出的天数不合理，请换个说法再试');
   const places = o.places.filter(
     (p: any) => isStr(p?.name) && p.name.trim() && isNum(p.lat) && isNum(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180,
   );
-  return { summary: o.summary, days, places };
+  const title = isStr(o.title) ? o.title.trim().slice(0, 24) : '';
+  return { title, summary: o.summary, days, places };
 }
 
 export async function replanWithAi(
@@ -435,6 +439,132 @@ export async function replanWithAi(
   return { plan: validateReplan(r.input, trip.days.length, target), costUsd: r.costUsd };
 }
 
+
+/* ---------- 用自然语言调整行程 ---------- */
+
+const EDIT_RULES = `你是经验丰富的家庭自驾行程规划师，正在帮一家人修改行程。按用户这句话修改下面的行程，给出修改后的完整逐日行程。
+
+规则：
+- 只改用户要求的部分；没有提到的日子原样保留（from、to、stops、km、driveHours、notes 都照抄），kind 填 "same"。
+- 天数可以增减；除非用户要求，第一天的出发地和最后一天的终点保持不变。
+- 有孩子同行：每天驾车尽量不超过 5 小时；超过时在 reason 里说明。
+- 同一地点必须使用原行程或「已知地点」里完全相同的名称；新出现的地点在 places 里给出准确坐标（纬度、经度 4 位小数）。
+- km、driveHours 按实际道路估算；sources 写明每一天由原行程第几天变来（从 1 开始，全新的一天为空数组）。
+- 用户的话含糊时做最小的合理改动，并在 summary 里说明你的理解。
+- 所有说明用简体中文。`;
+
+const EDIT_FORMAT = `只回复一个 JSON 对象，不要其他文字，格式：
+{"title":"不超过 12 个字的方案名","summary":"2–4 句：改了什么、为什么、要注意什么",
+ "days":[{"title":"","from":"","to":"","stops":["途经点"],"km":0,"driveHours":0,"overnight":true,
+   "sources":[1],"kind":"same|merged|split|added|edited","reason":"一句话","notes":""}],
+ "places":[{"name":"新地点名称","label":"中文名","lat":0,"lng":0,"desc":"一句介绍"}]}`;
+
+function editPrompt(trip: Trip, instruction: string, prefs: string): string {
+  const days = trip.days.map((d, i) => ({
+    day: i + 1,
+    date: addDays(trip.startDate, i),
+    title: d.title,
+    from: d.from,
+    to: d.to,
+    stops: d.stops.filter((x) => x.trim()),
+    km: d.km,
+    driveHours: d.driveHours,
+    ...(d.mode && d.mode !== 'drive' ? { mode: d.mode } : {}),
+    overnight: d.accommodation ? d.accommodation.name : false,
+    notes: d.notes.slice(0, 160),
+  }));
+  return [
+    `行程：${trip.name}，出发日期 ${trip.startDate}，${trip.adults} 大 ${trip.children} 小，总预算 $${trip.budget}`,
+    prefs.trim() ? `家庭偏好：${prefs.trim()}` : '',
+    `已知地点（有坐标）：${trip.places.map((p) => p.name).join('；')}`,
+    `当前行程：\n${JSON.stringify(days)}`,
+    `用户要求：${instruction.trim()}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+const EDIT_TOOL: Anthropic.Beta.BetaTool = {
+  ...REPLAN_TOOL,
+  description: '提交按用户要求修改后的完整逐日行程。完成后调用一次。',
+  input_schema: {
+    ...REPLAN_TOOL.input_schema,
+    required: ['title', 'summary', 'days', 'places'],
+    properties: {
+      title: { ...str, description: '不超过 12 个字的方案名' },
+      ...(REPLAN_TOOL.input_schema as { properties: Record<string, unknown> }).properties,
+    },
+  } as Anthropic.Beta.BetaTool['input_schema'],
+};
+
+type SampleFn = ((input: string, opts?: object) => Promise<{ text: string }>) & {
+  json: <T = unknown>(input: string, opts?: object) => Promise<T>;
+};
+let samplePromise: Promise<SampleFn | null> | null = null;
+
+/** 在 Claude 里打开时，页面可以直接请 Claude 帮忙（sample 能力）；网页版没有 */
+export function claudeSample(): Promise<SampleFn | null> {
+  if (!samplePromise) {
+    const c = (globalThis as { claude?: { use?: (n: string) => Promise<unknown> } }).claude;
+    samplePromise = c?.use ? (c.use('sample') as Promise<SampleFn | null>).catch(() => null) : Promise.resolve(null);
+  }
+  return samplePromise;
+}
+
+/** 自然语言调整能用哪种方式：Claude 页面里的 Claude / 网页版的 API Key / 不可用 */
+export async function editEngine(): Promise<'claude' | 'api' | null> {
+  if (await claudeSample()) return 'claude';
+  return loadAiSettings().apiKey.trim() ? 'api' : null;
+}
+
+const SAMPLE_ERRORS: Record<string, string> = {
+  not_granted: '没有允许这个页面使用 Claude。可以在页面的权限设置里打开。',
+  sampling_disabled: '这个账号暂时不能在页面里使用 Claude。',
+  rate_limited: '请求太频繁或已达到使用上限，请稍后再试。',
+  refused: 'Claude 没有处理这条要求，换个说法试试。',
+  invalid_json: 'Claude 返回的格式不对，请再试一次。',
+  empty_completion: 'Claude 没有给出结果，请换个说法再试。',
+  session_expired: '登录已过期，请重新登录 Claude。',
+};
+
+export async function editPlanWithAi(
+  trip: Trip,
+  instruction: string,
+  onStatus: (s: string) => void,
+  signal?: AbortSignal,
+): Promise<{ plan: AiReplan; engine: 'claude' | 'api'; costUsd?: number }> {
+  const settings = loadAiSettings();
+  const sample = await claudeSample();
+  const prompt = editPrompt(trip, instruction, settings.preferences);
+  if (sample) {
+    onStatus('Claude 正在思考…');
+    try {
+      const data = await sample.json(`${EDIT_RULES}\n\n${prompt}\n\n${EDIT_FORMAT}`, {
+        cache: false,
+        signal,
+        onText: () => onStatus('Claude 正在写新的行程…'),
+      });
+      return { plan: validateReplan(data, trip.days.length, null), engine: 'claude' };
+    } catch (e) {
+      if (e instanceof AiError) throw e;
+      const code = (e as { code?: string })?.code ?? '';
+      if (code === 'cancelled') throw new AiError('已取消');
+      throw new AiError(SAMPLE_ERRORS[code] ?? '暂时连不上 Claude，请稍后再试。');
+    }
+  }
+  if (!settings.apiKey.trim()) {
+    throw new AiError('在 Claude 里打开这个页面就能直接用；网页版需要先在「设置 → AI 推荐」填写 API Key。');
+  }
+  const r = await callWithSubmitTool(settings, {
+    system: EDIT_RULES,
+    prompt,
+    tool: EDIT_TOOL,
+    webSearch: false,
+    onStatus,
+    busyText: 'AI 正在改行程…',
+  });
+  return { plan: validateReplan(r.input, trip.days.length, null), engine: 'api', costUsd: r.costUsd };
+}
 
 /* ---------- 写回行程 ---------- */
 

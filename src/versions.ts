@@ -82,3 +82,23 @@ export function switchPlan(trip: Trip, versionId: string): Trip {
   const versions = next.versions;
   return { ...structuredClone(target.snapshot), id: trip.id, name: trip.name, versions, activePlan: versionId };
 }
+
+/** 把一个新方案加进行程的方案列表（还没有方案时，先把当前内容存成方案 A） */
+export function saveAsPlan(trip: Trip, plan: Trip, title: string): Trip {
+  const t = structuredClone(trip);
+  if (!planOptions(t).length) {
+    const first = addVersion(t, `A：${trip.name.slice(0, 16)}`, 'proposal');
+    t.activePlan = first.id;
+  }
+  const used = new Set(planOptions(t).map((v) => v.label.split('：')[0]));
+  let letter = '新';
+  for (let i = 0; i < 26; i++) {
+    const l = String.fromCharCode(65 + i);
+    if (!used.has(l)) {
+      letter = l;
+      break;
+    }
+  }
+  addVersion(t, `${letter}：${title.trim() || '新方案'}`, 'proposal', snapshot(plan));
+  return t;
+}

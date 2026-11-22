@@ -8,12 +8,13 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
+import { AskBar, PlanBoard, PlanMatrix } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
 import { parseInvite } from './sync';
-import { addVersion, currentPlanId, planOptions, restoreVersion, snapshot, switchPlan, versionTrip } from './versions';
+import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
 import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
@@ -147,6 +148,32 @@ export default function App() {
     replaceTrip(withHistory);
     window.scrollTo(0, 0);
   };
+  const [planView, setPlanView] = useState<'days' | 'matrix'>('days');
+  const [ask, setAsk] = useState<{ intent: 'edit' | 'new'; key: number }>({ intent: 'edit', key: 0 });
+  const [toast, setToast] = useState('');
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+  const applyEdit = (next: Trip, instruction: string) => {
+    setUndo({ trip, label: `「${instruction.slice(0, 24)}」` });
+    const withHistory = structuredClone(next);
+    withHistory.versions = structuredClone(trip.versions ?? []);
+    withHistory.activePlan = trip.activePlan;
+    addVersion(withHistory, `AI 调整前：${instruction.slice(0, 30)}`, 'auto', snapshot(trip));
+    replaceTrip(withHistory);
+    setPlanView('days');
+    window.scrollTo(0, 0);
+  };
+  const savePlan = (plan: Trip, title: string) => {
+    const next = saveAsPlan(trip, plan, title);
+    replaceTrip(next);
+    setToast(`已另存为新方案「${title}」，在上方方案卡片里可以对比、切换`);
+    setAsk({ intent: 'edit', key: 0 });
+    setPlanView('matrix');
+    window.scrollTo(0, 0);
+  };
   const undoReplan = () => {
     if (!undo) return;
     replaceTrip(undo.trip);
@@ -260,15 +287,29 @@ export default function App() {
         <main>
           {tab === 'itinerary' && (
             <>
-              <PlanSwitcher
+              <PlanBoard
                 trip={trip}
+                view={planOptions(trip).length > 1 ? planView : 'days'}
+                setView={setPlanView}
                 onSwitch={(id) => {
                   setUndo(null);
                   setFocus(null);
                   replaceTrip(switchPlan(trip, id));
                 }}
-                onCompare={() => setTab('versions')}
+                onNew={() => setAsk((a) => ({ intent: 'new', key: a.key + 1 }))}
               />
+              {toast && <section className="notice"><span>{toast}</span></section>}
+              {planView === 'matrix' && planOptions(trip).length > 1 ? (
+                <PlanMatrix
+                  trip={trip}
+                  onSwitch={(id) => {
+                    setUndo(null);
+                    setFocus(null);
+                    replaceTrip(switchPlan(trip, id));
+                  }}
+                />
+              ) : (
+              <>
               <GuideSign trip={trip} />
               <MissingBanner trip={trip} update={update} />
               <TripStatus trip={trip} goTo={setTab} />
@@ -292,6 +333,16 @@ export default function App() {
                 onSave={(t, label) => update((d) => void addVersion(d, label, 'proposal', snapshot(t)))}
               />
               <Itinerary trip={trip} update={update} showOnMap={showOnMap} focus={sideMap ? focus : null} />
+              </>
+              )}
+              <AskBar
+                key={trip.id}
+                trip={trip}
+                intent={ask.intent}
+                focusKey={ask.key}
+                onApply={applyEdit}
+                onSaveAsPlan={savePlan}
+              />
             </>
           )}
           {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
@@ -335,45 +386,6 @@ export default function App() {
         )}
       </div>
     </div>
-  );
-}
-
-/* ---------------- 方案切换 ---------------- */
-
-/** 行程有多个备选方案时，在行程页顶部一键切换 */
-function PlanSwitcher({ trip, onSwitch, onCompare }: { trip: Trip; onSwitch: (id: string) => void; onCompare: () => void }) {
-  const plans = planOptions(trip);
-  if (plans.length < 2) return null;
-  const active = currentPlanId(trip);
-  return (
-    <section className="plans" aria-label="切换方案">
-      <div className="plans-head">
-        <span>行程方案</span>
-        <button className="link" onClick={onCompare}>并排对比</button>
-      </div>
-      <div className="plans-row">
-        {plans.map((v) => {
-          const t = active === v.id ? trip : versionTrip(trip, v);
-          const s = summarize(t);
-          const longest = Math.max(0, ...t.days.map((d) => d.driveHours));
-          const [tag, ...rest] = v.label.split('：');
-          return (
-            <button
-              key={v.id}
-              className={active === v.id ? 'plan on' : 'plan'}
-              aria-pressed={active === v.id}
-              onClick={() => onSwitch(v.id)}
-            >
-              <span className="plan-tag">{rest.length ? tag : '方案'}</span>
-              <span className="plan-name">{rest.length ? rest.join('：') : v.label}</span>
-              <span className="plan-meta">
-                {s.days} 天，最长一天 {longest} 小时，约 {money(s.total)}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 

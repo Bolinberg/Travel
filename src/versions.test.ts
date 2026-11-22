@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultTrip, duplicateTrip } from './defaultTrip';
-import { addVersion, MAX_VERSIONS, restoreVersion, snapshot, versionTrip } from './versions';
+import { addVersion, MAX_VERSIONS, restoreVersion, saveAsPlan, snapshot, versionTrip } from './versions';
 import { proposalTrip, proposeByRules } from './replan';
 
 describe('versions', () => {
@@ -71,5 +71,22 @@ describe('switching plans on the itinerary page', () => {
     const a = planOptions(t0).find((v) => v.label === COMPARE_A)!;
     const next = switchPlan(edited, a.id);
     expect(next.versions!.some((v) => v.kind === 'auto')).toBe(true);
+  });
+});
+
+
+describe('saveAsPlan', () => {
+  it('先把当前内容存成 A，再加 B', () => {
+    const t = createDefaultTrip();
+    const plan = structuredClone(t);
+    plan.days = plan.days.slice(0, 5);
+    const next = saveAsPlan(t, plan, '短一点');
+    const labels = (next.versions ?? []).filter((v) => v.kind === 'proposal').map((v) => v.label);
+    expect(labels[0].startsWith('A：')).toBe(true);
+    expect(labels).toContain('B：短一点');
+    expect(next.days.length).toBe(t.days.length);
+    expect(next.activePlan).toBeTruthy();
+    const again = saveAsPlan(next, plan, '再来');
+    expect((again.versions ?? []).some((v) => v.label === 'C：再来')).toBe(true);
   });
 });
