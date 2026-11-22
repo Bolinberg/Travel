@@ -4,6 +4,7 @@ import { DEFAULT_PLACES } from './places';
 import { GUIDES } from './guides';
 import { genericChecklist } from './defaultTrip';
 import { addVersion, snapshot } from './versions';
+import { applyVerifiedStays } from './stays';
 
 /*
  * 6 天方案：墨尔本 → 大洋路 → Port Fairy → 甘比尔山 → Robe → 库隆 → 阿德莱德 → 袋鼠岛 → 阿德莱德
@@ -586,7 +587,7 @@ export function createRouteComparisonTrip(): Trip {
   addVersion(b, COMPARE_A, 'proposal', snapA);
   b.activePlan = vb.id;
   b.name = COMPARE_NAME;
-  return b;
+  return applyVerifiedStays(b);
 }
 
 /**

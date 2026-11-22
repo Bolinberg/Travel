@@ -52,6 +52,12 @@ export interface Rec {
   cost?: number;
   note: string;
   picked: boolean;
+  /** 官网（已核实） */
+  url?: string;
+  /** Booking.com / Wotif 等大平台上的房源页 */
+  bookingUrl?: string;
+  /** 评分及来源，如「Booking.com 8.6/10」 */
+  rating?: string;
 }
 
 /** 交通方式 */

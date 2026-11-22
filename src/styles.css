@@ -1931,3 +1931,11 @@ button.left {
     max-height: 88vh;
   }
 }
+
+.recs .rating {
+  color: var(--amber-ink);
+  font-weight: 600;
+}
+.link.strong {
+  font-weight: 700;
+}

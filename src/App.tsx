@@ -10,6 +10,7 @@ import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
 import { AskBar, PlanBoard, PlanMatrix } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
+import { applyVerifiedStays } from './stays';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -64,7 +65,7 @@ function useWide() {
 
 function initialStore(): Store {
   const s = loadStore();
-  if (s) return { ...s, trips: s.trips.map(upgradeComparison) };
+  if (s) return { ...s, trips: s.trips.map((t) => applyVerifiedStays(upgradeComparison(t))) };
   // 第一次打开：直接用家里确定的 7 天往返方案
   const t = createRouteComparisonTrip();
   return { activeId: t.id, trips: [t] };
@@ -1175,6 +1176,10 @@ function DayGuide({ trip, day, index, update }: { trip: Trip; day: Day; index: n
                 if (picked && d.accommodation) {
                   d.accommodation.name = r.name;
                   if (r.cost) d.accommodation.cost = r.cost;
+                  const link = r.url || r.bookingUrl;
+                  if (link && !d.accommodation.notes.includes(link)) {
+                    d.accommodation.notes = [d.accommodation.notes, `预订：${link}`].filter(Boolean).join('\n');
+                  }
                 }
               }))
           }
@@ -1313,8 +1318,15 @@ function RecSection({
               {r.type}
               {r.where && r.where !== defaultWhere ? ` · ${r.where}` : ''}
             </div>
+            {r.rating && <div className="small rating">★ {r.rating}</div>}
             {r.note && <p className="small">{r.note}</p>}
             <div className="row wrap gap small">
+              {r.url && <a className="link strong" href={r.url} target="_blank" rel="noreferrer">官网预订 ↗</a>}
+              {r.bookingUrl && (
+                <a className="link strong" href={r.bookingUrl} target="_blank" rel="noreferrer">
+                  {/wotif/i.test(r.bookingUrl) ? 'Wotif' : /expedia/i.test(r.bookingUrl) ? 'Expedia' : /airbnb/i.test(r.bookingUrl) ? 'Airbnb' : 'Booking.com'} ↗
+                </a>
+              )}
               <a className="link" href={links.tripadvisor(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">Tripadvisor</a>
               <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
               <span className="spacer" />
