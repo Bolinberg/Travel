@@ -216,3 +216,33 @@ button.left { text-align: left; color: var(--text); font-size: 15px; }
 .ai { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 4px; }
 button.ai-btn { border-color: #7c3aed; color: #7c3aed; font-weight: 600; }
 @media (prefers-color-scheme: dark) { button.ai-btn { border-color: #a78bfa; color: #a78bfa; } }
+
+/* ---------- 调整天数 ---------- */
+.replan-entry { padding: 10px 16px; }
+.replan .target { gap: 8px; margin: 4px 0 10px; font-size: 17px; }
+.replan .target input { width: 5em; font-size: 17px; text-align: center; }
+.replan textarea { margin-bottom: 8px; }
+button.ai-btn.big { padding: 6px 14px; font-size: 15px; border-radius: 10px; }
+.compare { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 4px; }
+.compare h3 { font-size: 15px; margin: 14px 0 8px; }
+.compare .tag { color: var(--accent); }
+.cmp-stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; margin: 8px 0; }
+.cmp-stats > div:nth-child(odd) { color: var(--muted); }
+.warn-box { background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+.warn-box p { margin: 2px 0; }
+.chip-s { display: inline-block; border-radius: 999px; padding: 0 8px; margin: 2px 4px 2px 0; font-size: 12px; border: 1px solid; }
+.chip-s.drop { color: var(--bad); text-decoration: line-through; }
+.chip-s.add { color: var(--good); }
+.seg { gap: 6px; margin: 8px 0; }
+.cmp-days li { display: grid; gap: 6px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; }
+@media (min-width: 600px) { .cmp-days li { grid-template-columns: 3fr 2fr; } }
+.cmp-day.k-same { border-left-color: var(--border); }
+.cmp-day.k-merged { border-left-color: #7c3aed; } .tag.k-merged { color: #7c3aed; }
+.cmp-day.k-split { border-left-color: #0369a1; } .tag.k-split { color: #0369a1; }
+.cmp-day.k-added { border-left-color: var(--good); } .tag.k-added { color: var(--good); }
+.cmp-day.k-edited { border-left-color: var(--warn); } .tag.k-edited { color: var(--warn); }
+.sticky-actions { z-index: 600; }
+.tag.k-same { color: var(--muted); }
+.cmp-old { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+.reason { margin-top: 4px; color: var(--accent); }
+.sticky-actions { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0; border-top: 1px solid var(--border); }

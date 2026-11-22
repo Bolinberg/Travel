@@ -7,6 +7,7 @@ import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './s
 import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
+import Replan from './Replan';
 import { fetchRoute, findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 
 type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'settings';
@@ -61,7 +62,23 @@ export default function App() {
     setTab('overview');
     setFocus(null);
   };
+  // 调整天数后可撤销（只保留最近一次）
+  const [undo, setUndo] = useState<{ trip: Trip; label: string } | null>(null);
+  const replaceTrip = (next: Trip) =>
+    setStore((s) => ({ ...s, trips: s.trips.map((t) => (t.id === next.id ? next : t)) }));
+  const applyReplan = (next: Trip, label: string) => {
+    setUndo({ trip, label });
+    replaceTrip(next);
+    window.scrollTo(0, 0);
+  };
+  const undoReplan = () => {
+    if (!undo) return;
+    replaceTrip(undo.trip);
+    setUndo(null);
+  };
+
   const switchTrip = (id: string) => {
+    setUndo(null);
     setStore((s) => ({ ...s, activeId: id }));
     setShowTrips(false);
     setTab('overview');
@@ -117,7 +134,19 @@ export default function App() {
       <main>
         {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} update={update} />}
         {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
-        {tab === 'itinerary' && <Itinerary trip={trip} update={update} showOnMap={showOnMap} />}
+        {tab === 'itinerary' && (
+          <>
+            {undo && undo.trip.id === trip.id && (
+              <section className="card banner small">
+                <span>已调整行程：{undo.label}</span>
+                <button className="mini" onClick={undoReplan}>撤销</button>
+                <button className="icon" aria-label="关闭" onClick={() => setUndo(null)}>×</button>
+              </section>
+            )}
+            <Replan key={trip.id + trip.days.length} trip={trip} onApply={applyReplan} />
+            <Itinerary trip={trip} update={update} showOnMap={showOnMap} />
+          </>
+        )}
         {tab === 'costs' && <Costs trip={trip} update={update} />}
         {tab === 'checklist' && <Checklist trip={trip} update={update} />}
         {tab === 'settings' && <Settings trip={trip} update={update} onImport={addTrip} />}

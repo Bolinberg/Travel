@@ -186,31 +186,41 @@ export interface AiRun {
 
 export class AiError extends Error {}
 
-export async function generateDayRecs(
+/**
+ * 通用调用：让 Claude（可选联网搜索）完成任务后调用指定的提交工具，返回该工具的原始输入。
+ * 处理 pause_turn、忘记提交、拒绝和各类 API 错误。
+ */
+async function callWithSubmitTool(
   settings: AiSettings,
-  trip: Trip,
-  index: number,
-  onStatus: (s: string) => void,
-): Promise<AiRun> {
+  opts: {
+    system: string;
+    prompt: string;
+    tool: Anthropic.Beta.BetaTool;
+    webSearch: boolean;
+    onStatus: (s: string) => void;
+    busyText: string;
+  },
+): Promise<{ input: unknown; costUsd: number; searches: number }> {
   if (!settings.apiKey.trim()) throw new AiError('请先在「设置 → AI 推荐」里填写 Anthropic API Key');
   const model = AI_MODELS.find((m) => m.id === settings.model) ?? AI_MODELS[0];
   const client = new Anthropic({ apiKey: settings.apiKey.trim(), dangerouslyAllowBrowser: true });
-  const day = trip.days[index];
-  const prompt = dayPrompt(trip, day, index, settings.preferences);
+  const tools: Anthropic.Beta.BetaToolUnion[] = opts.webSearch
+    ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }, opts.tool]
+    : [opts.tool];
 
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: prompt }];
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: opts.prompt }];
   let costUsd = 0;
   let searches = 0;
 
   try {
     for (let attempt = 0; attempt < 6; attempt++) {
-      onStatus(attempt === 0 ? 'AI 正在研究…' : 'AI 继续研究…');
+      opts.onStatus(attempt === 0 ? opts.busyText : `${opts.busyText}（继续）`);
       const stream = client.beta.messages.stream({
         model: model.id,
         max_tokens: 16000,
         output_config: { effort: 'medium' },
-        system: SYSTEM,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }, SUBMIT_TOOL],
+        system: opts.system,
+        tools,
         tool_choice: { type: 'auto' },
         messages,
         // 被安全分类器拒绝时，服务端自动换模型重试
@@ -219,7 +229,7 @@ export async function generateDayRecs(
       stream.on('contentBlock', (b) => {
         if (b.type === 'server_tool_use' && b.name === 'web_search') {
           const q = (b.input as { query?: string })?.query;
-          if (q) onStatus(`正在搜索：${q}`);
+          if (q) opts.onStatus(`正在搜索：${q}`);
         }
       });
       const msg = await stream.finalMessage();
@@ -235,15 +245,15 @@ export async function generateDayRecs(
       if (msg.stop_reason === 'refusal') throw new AiError('AI 拒绝了这个请求，请修改行程描述后重试');
 
       const submit = msg.content.find(
-        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use' && b.name === 'submit_recommendations',
+        (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use' && b.name === opts.tool.name,
       );
-      if (submit) return { result: validateResult(submit.input), costUsd, searches };
+      if (submit) return { input: submit.input, costUsd, searches };
 
       if (msg.stop_reason === 'max_tokens') throw new AiError('AI 输出过长被截断，请重试');
       messages.push({ role: 'assistant', content: msg.content as Anthropic.Beta.BetaContentBlockParam[] });
       // pause_turn：服务端搜索循环暂停，原样续传即可；否则提醒它提交结果
       if (msg.stop_reason !== 'pause_turn') {
-        messages.push({ role: 'user', content: '请调用 submit_recommendations 提交结果。' });
+        messages.push({ role: 'user', content: `请调用 ${opts.tool.name} 提交结果。` });
       }
     }
     throw new AiError('AI 没有返回结果，请重试');
@@ -257,6 +267,173 @@ export async function generateDayRecs(
     throw new AiError(e instanceof Error ? e.message : String(e));
   }
 }
+
+export async function generateDayRecs(
+  settings: AiSettings,
+  trip: Trip,
+  index: number,
+  onStatus: (s: string) => void,
+): Promise<AiRun> {
+  const r = await callWithSubmitTool(settings, {
+    system: SYSTEM,
+    prompt: dayPrompt(trip, trip.days[index], index, settings.preferences),
+    tool: SUBMIT_TOOL,
+    webSearch: true,
+    onStatus,
+    busyText: 'AI 正在研究…',
+  });
+  return { result: validateResult(r.input), costUsd: r.costUsd, searches: r.searches };
+}
+
+/* ---------- 调整天数 ---------- */
+
+export interface AiReplanDay {
+  title: string;
+  from: string;
+  to: string;
+  stops: string[];
+  km: number;
+  driveHours: number;
+  overnight: boolean;
+  sources: number[];
+  kind: 'same' | 'merged' | 'split' | 'added' | 'edited';
+  reason: string;
+  notes: string;
+}
+export interface AiReplan {
+  summary: string;
+  days: AiReplanDay[];
+  places: { name: string; label: string; lat: number; lng: number; desc: string }[];
+}
+
+const REPLAN_TOOL: Anthropic.Beta.BetaTool = {
+  name: 'submit_itinerary',
+  description: '提交调整后的逐日行程。完成规划后调用一次。',
+  strict: true,
+  eager_input_streaming: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['summary', 'days', 'places'],
+    properties: {
+      summary: { ...str, description: '2–4 句中文：调整思路、取舍了什么、需要注意什么' },
+      days: {
+        type: 'array',
+        description: '调整后的每一天，按顺序，数量必须等于目标天数',
+        items: obj({
+          title: { ...str, description: '中文标题' },
+          from: { ...str, description: '出发地；与原行程同一地点时必须原样使用原名称' },
+          to: { ...str, description: '当天终点/过夜地；同上' },
+          stops: { type: 'array', items: str, description: '途经点/景点，按顺序；尽量使用原名称' },
+          km: { ...num, description: '估算驾车里程' },
+          driveHours: { ...num, description: '估算驾车小时数，保留 1 位小数' },
+          overnight: { type: 'boolean', description: '当晚是否需要住宿（最后一天回家为 false）' },
+          sources: { type: 'array', items: { type: 'integer' }, description: '这一天的内容来自原行程第几天（从 1 开始）；全新的一天为空数组' },
+          kind: { type: 'string', enum: ['same', 'merged', 'split', 'added', 'edited'], description: '与原行程相比的变化类型' },
+          reason: { ...str, description: '一句中文：这一天为什么这样安排' },
+          notes: { ...str, description: '中文备注/提醒，可沿用原备注' },
+        }),
+      },
+      places: {
+        type: 'array',
+        description: '新方案里出现、但不在「已知地点」列表中的地点及坐标；没有则为空数组',
+        items: obj({
+          name: { ...str, description: '与 days 中使用的名称完全一致' },
+          label: { ...str, description: '中文显示名' },
+          lat: num,
+          lng: num,
+          desc: { ...str, description: '一句中文介绍' },
+        }),
+      },
+    },
+  },
+};
+
+const REPLAN_SYSTEM = `你是经验丰富的家庭自驾行程规划师。用户想把现有行程改成新的天数，请给出调整后的完整逐日行程。
+
+原则：
+- 第一天的出发地、最后一天的终点保持不变（通常是从家出发、回到家）。
+- 有孩子同行：每天驾车尽量不超过 5–6 小时，长途日要安排休息点；缩短行程时优先删减次要景点和重复的同城日，保留最有代表性的景点；延长行程时优先拆分长途日、增加核心目的地的停留。
+- 与原行程同一地点时，地名必须与原行程中的写法完全一致（系统靠名称对应坐标和住宿）；新出现的地点在 places 里给出准确坐标。
+- sources 写明每一天由原行程哪几天变来，用来沿用原来的住宿和推荐。
+- 说明文字用简体中文。规划完成后调用 submit_itinerary 提交一次。`;
+
+function replanPrompt(trip: Trip, target: number, request: string, prefs: string): string {
+  const days = trip.days.map((d, i) => ({
+    day: i + 1,
+    date: addDays(trip.startDate, i),
+    title: d.title,
+    from: d.from,
+    to: d.to,
+    stops: d.stops.filter((s) => s.trim()),
+    km: d.km,
+    driveHours: d.driveHours,
+    overnight: d.accommodation ? `${d.accommodation.name}（$${d.accommodation.cost}${d.accommodation.booked ? '，已预订' : ''}）` : false,
+    notes: d.notes,
+  }));
+  return [
+    `行程：${trip.name}，出发日期 ${trip.startDate}，${trip.adults} 大 ${trip.children} 小，总预算 $${trip.budget}`,
+    `目标：把 ${trip.days.length} 天改为 ${target} 天。`,
+    request.trim() ? `用户的额外要求：${request.trim()}` : '',
+    prefs.trim() ? `家庭偏好：${prefs.trim()}` : '',
+    `已知地点（有坐标）：${trip.places.map((p) => p.name).join('；')}`,
+    `原行程：\n${JSON.stringify(days, null, 1)}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function validateReplan(input: unknown, origDays: number, target: number): AiReplan {
+  const o = input as Record<string, any>;
+  if (!o || !isStr(o.summary) || !Array.isArray(o.days) || !Array.isArray(o.places)) {
+    throw new AiError('AI 返回的方案不完整，请重试');
+  }
+  const kinds = ['same', 'merged', 'split', 'added', 'edited'];
+  const days: AiReplanDay[] = o.days.map((d: any, i: number) => {
+    if (!d || !isStr(d.from) || !isStr(d.to) || !d.from.trim() || !d.to.trim()) {
+      throw new AiError(`AI 方案第 ${i + 1} 天缺少出发地或目的地，请重试`);
+    }
+    return {
+      title: isStr(d.title) && d.title.trim() ? d.title : `第 ${i + 1} 天`,
+      from: d.from.trim(),
+      to: d.to.trim(),
+      stops: Array.isArray(d.stops) ? d.stops.filter(isStr).map((s: string) => s.trim()).filter(Boolean) : [],
+      km: isNum(d.km) && d.km >= 0 ? Math.round(d.km) : 0,
+      driveHours: isNum(d.driveHours) && d.driveHours >= 0 ? Math.round(d.driveHours * 10) / 10 : 0,
+      overnight: d.overnight === true,
+      sources: Array.isArray(d.sources)
+        ? d.sources.filter((n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= origDays)
+        : [],
+      kind: kinds.includes(d.kind) ? d.kind : 'edited',
+      reason: isStr(d.reason) ? d.reason : '',
+      notes: isStr(d.notes) ? d.notes : '',
+    };
+  });
+  if (days.length !== target) throw new AiError(`AI 给出了 ${days.length} 天，而不是 ${target} 天，请重试`);
+  const places = o.places.filter(
+    (p: any) => isStr(p?.name) && p.name.trim() && isNum(p.lat) && isNum(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180,
+  );
+  return { summary: o.summary, days, places };
+}
+
+export async function replanWithAi(
+  settings: AiSettings,
+  trip: Trip,
+  target: number,
+  request: string,
+  onStatus: (s: string) => void,
+): Promise<{ plan: AiReplan; costUsd: number }> {
+  const r = await callWithSubmitTool(settings, {
+    system: REPLAN_SYSTEM,
+    prompt: replanPrompt(trip, target, request, settings.preferences),
+    tool: REPLAN_TOOL,
+    webSearch: false,
+    onStatus,
+    busyText: 'AI 正在重新规划…',
+  });
+  return { plan: validateReplan(r.input, trip.days.length, target), costUsd: r.costUsd };
+}
+
 
 /* ---------- 写回行程 ---------- */
 
