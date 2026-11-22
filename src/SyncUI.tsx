@@ -84,13 +84,22 @@ export function SyncCard({
   if (!cfg) {
     return (
       <section className="card form">
-        <h2>☁️ 家庭同步</h2>
+        <h2>邀请家人一起编辑</h2>
         <p className="muted small">
-          连接同步服务器后，家人在各自的手机、电脑上看到和编辑的是同一份行程，修改几秒内同步。不需要注册账号：一人创建家庭空间，把邀请链接发给家人即可。
+          创建一个家庭空间，把邀请链接发给家人。之后大家在各自的手机、电脑上看到和编辑的是同一份行程，几秒内同步，不用注册账号。
         </p>
-        <Field label="同步服务器地址">
-          <input placeholder="https://你的服务器地址" value={server} onChange={(e) => setServer(e.target.value)} />
-        </Field>
+        {defaultServer() ? (
+          <details className="advanced">
+            <summary className="muted small">高级：同步服务器</summary>
+            <Field label="同步服务器地址">
+              <input placeholder="https://你的服务器地址" value={server} onChange={(e) => setServer(e.target.value)} />
+            </Field>
+          </details>
+        ) : (
+          <Field label="同步服务器地址（需要先部署同步服务）">
+            <input placeholder="https://你的服务器地址" value={server} onChange={(e) => setServer(e.target.value)} />
+          </Field>
+        )}
         <Field label="你的称呼">
           <input placeholder="如：爸爸 / 妈妈 / 小明" value={member} onChange={(e) => setMember(e.target.value)} />
         </Field>

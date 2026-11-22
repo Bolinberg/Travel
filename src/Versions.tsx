@@ -14,7 +14,7 @@ function when(iso: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-interface Scheme {
+export interface Scheme {
   key: string;
   name: string;
   trip: Trip;
@@ -28,18 +28,21 @@ export default function Versions({
   onRestore,
   onRename,
   onDelete,
+  history = false,
 }: {
   trip: Trip;
+  /** 只列历史版本（备选方案在「方案」页上面单独显示） */
+  history?: boolean;
   onSave: (label: string) => void;
   onRestore: (id: string) => void;
   onRename: (id: string, label: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const versions = [...(trip.versions ?? [])].reverse(); // 新的在上
+  const versions = [...(trip.versions ?? [])].reverse().filter((v) => !history || v.kind !== 'proposal'); // 新的在上
   // 有备选方案（例如路线对比）时，默认选中它们并直接打开对比
   const proposals = versions.filter((v) => v.kind === 'proposal').map((v) => v.id).slice(0, 4).reverse();
-  const [selected, setSelected] = useState<string[]>(proposals.length >= 2 ? proposals : ['current']);
-  const [comparing, setComparing] = useState(proposals.length >= 2);
+  const [selected, setSelected] = useState<string[]>(!history && proposals.length >= 2 ? proposals : ['current']);
+  const [comparing, setComparing] = useState(!history && proposals.length >= 2);
 
   const schemes: Scheme[] = useMemo(
     () => [
@@ -62,16 +65,12 @@ export default function Versions({
 
   return (
     <>
-      <section className="card">
-        <div className="row between">
-          <h2>方案与历史</h2>
-          <button className="mini on" onClick={save}>保存当前为方案</button>
-        </div>
-        <p className="muted small">
-          调整天数、AI 批量生成、恢复旧版本、删除某天之前会自动保存一份。勾选 2–4 个方案（含当前版本）即可并排对比，满意的方案可以「采用」。最多保留
-          20 个版本，超出时先删除最旧的自动保存。
+      <div className="row between wrap">
+        <p className="muted small grow">
+          每次大的调整（改天数、用一句话改行程、删除某天、恢复旧版本）之前都会自动保存一份。勾选 2–4 个可以并排对比。最多保留 20 份，超出时先删最旧的自动保存。
         </p>
-      </section>
+        <button className="mini" onClick={save}>保存当前这一版</button>
+      </div>
 
       <ul className="plain versions">
         {schemes.map((s) => (
@@ -91,7 +90,7 @@ export default function Versions({
         ))}
       </ul>
       {versions.length === 0 && (
-        <p className="muted small center">还没有历史版本。在「行程 → 调整天数」里生成的方案可以「另存为方案」，也可以点上面的「保存当前为方案」。</p>
+        <p className="muted small center">还没有历史版本。</p>
       )}
 
       <div className="compare-bar">
@@ -144,9 +143,9 @@ function VersionRow({
         <div className="row wrap small actions">
           <button
             className="mini on"
-            onClick={() => confirm(`采用「${v.label}」？当前版本会先自动保存，之后可以随时切回。`) && onRestore(v.id)}
+            onClick={() => confirm(`恢复到「${v.label}」？当前内容会先自动保存，之后可以随时切回。`) && onRestore(v.id)}
           >
-            采用此方案
+            恢复这一版
           </button>
           <button
             className="mini"
@@ -166,15 +165,17 @@ function VersionRow({
   );
 }
 
-/** 多方案并排对比 */
-function MultiCompare({
+/** 多方案并排对比；compact 时只显示指标表（嵌在「方案」页里） */
+export function MultiCompare({
   schemes,
   onRestore,
   onClose,
+  compact = false,
 }: {
   schemes: Scheme[];
   onRestore: (id: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
+  compact?: boolean;
 }) {
   const stats = schemes.map((s) => {
     const sum = summarize(s.trip);
@@ -209,11 +210,13 @@ function MultiCompare({
   const maxDays = Math.max(...schemes.map((s) => s.trip.days.length));
 
   return (
-    <section className="card multi">
-      <div className="row between">
-        <h2>方案对比</h2>
-        <button className="icon" aria-label="关闭" onClick={onClose}>×</button>
-      </div>
+    <section className={compact ? 'multi compact' : 'card multi'}>
+      {!compact && (
+        <div className="row between">
+          <h2>对比</h2>
+          {onClose && <button className="icon" aria-label="关闭" onClick={onClose}>×</button>}
+        </div>
+      )}
       <div className="table-scroll">
         <table className="cmp-table">
           <thead>
@@ -250,7 +253,8 @@ function MultiCompare({
         </table>
       </div>
       <p className="muted small">绿色 = 该项最优。</p>
-
+      {!compact && (
+      <>
       <h3>逐日路线</h3>
       <div className="table-scroll">
         <table className="cmp-table days">
@@ -302,12 +306,14 @@ function MultiCompare({
             <button
               key={s.key}
               className="mini on"
-              onClick={() => confirm(`采用「${s.name}」？当前版本会先自动保存。`) && onRestore(s.version!.id)}
+              onClick={() => confirm(`恢复到「${s.name}」？当前内容会先自动保存。`) && onRestore(s.version!.id)}
             >
-              采用「{s.name}」
+              恢复「{s.name}」
             </button>
           ))}
       </div>
+      </>
+      )}
     </section>
   );
 }

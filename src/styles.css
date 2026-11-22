@@ -1821,20 +1821,10 @@ button.left {
 :root[data-theme="dark"] .hchip.h2 { background: #1c3440; color: #8cc3dc; }
 :root[data-theme="dark"] .hchip.h4 { background: #3d1d1a; color: var(--bad); }
 
-/* 「告诉我怎么改」：手机固定在底部导航上方，宽屏贴在内容底部 */
-.tab-itinerary.app {
-  padding-bottom: calc(var(--dock-h) + 150px + env(safe-area-inset-bottom));
-}
+/* 「改行程」输入框（在面板或「方案」页卡片里） */
 .ask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--dock-h) + env(safe-area-inset-bottom));
-  z-index: 899;
-  padding: 8px 12px 10px;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -6px 18px rgb(0 0 0 / 0.06);
+  display: grid;
+  gap: 0;
 }
 .ask-label {
   display: block;
@@ -1884,19 +1874,6 @@ button.left {
   border: 0;
   color: var(--ink);
 }
-@media (min-width: 720px) {
-  .tab-itinerary.app {
-    padding-bottom: 48px;
-  }
-  .ask {
-    position: sticky;
-    bottom: 12px;
-    margin-top: 16px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-  }
-}
-
 /* 结果预览浮层 */
 .sheet {
   position: fixed;
@@ -2056,4 +2033,813 @@ button.left {
 }
 .stay-options .stay-opt.picked:last-child {
   border-bottom: 2px solid var(--sign);
+}
+
+/* =====================================================================
+ * 重设计：行程（时间线 + 某一天面板）/ 方案 / 预订 / 准备
+ * ===================================================================== */
+
+body.no-scroll {
+  overflow: hidden;
+}
+
+/* 顶部：行程名 + 当前方案 · 日期 · 天数 */
+.mh-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.masthead .trip-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+.caret {
+  font-size: 11px;
+  color: var(--muted);
+}
+.plan-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: left;
+  min-width: 0;
+}
+.plan-line .pcard-tag {
+  min-width: 20px;
+  height: 20px;
+  font-size: 11.5px;
+}
+.plan-line-name {
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62vw;
+}
+.plan-line .sep {
+  color: var(--line);
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+/* 下一步 */
+.next {
+  background: var(--amber-soft);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 10px 14px 12px;
+  margin-bottom: 12px;
+}
+.next-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--amber-ink);
+  margin-bottom: 4px;
+}
+.next-count {
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.next ul.plain li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgb(122 82 0 / 0.15);
+  font-size: 14px;
+}
+.next ul.plain li:last-child {
+  border-bottom: 0;
+}
+.next li.urgent > span::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bad);
+  margin-right: 6px;
+  vertical-align: 2px;
+}
+.next .link {
+  white-space: nowrap;
+}
+.next p {
+  margin: 2px 0 0;
+}
+
+/* 手机：可展开的小地图 */
+.route-card {
+  position: relative;
+  display: block;
+  margin: 0 0 12px;
+}
+.route-card .map {
+  border-radius: var(--radius);
+}
+.route-card .map-legend,
+.route-card .map-offline {
+  display: none;
+}
+.route-expand {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 500;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--sign);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+
+/* 时间线：一天一行 */
+.tl-list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+ul.plain.tl-list > li,
+ol.plain.tl-list > li {
+  padding: 0;
+}
+.tl-item + .tl-item {
+  border-top: 1px solid var(--line);
+}
+.tl-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+.tl-row:hover {
+  background: var(--sunk);
+}
+.tl-item.open > .tl-row {
+  background: var(--good-soft);
+}
+.tl-n {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2.5px solid var(--c, var(--sign));
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  background: var(--surface);
+}
+.tl-main {
+  display: grid;
+  min-width: 0;
+}
+.tl-title {
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-sub,
+.tl-stay {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-stay {
+  color: var(--ink);
+  opacity: 0.8;
+}
+.tl-side {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.tl-st {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tl-st::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+.tl-st.ok {
+  color: var(--good);
+}
+.tl-st.ok::before {
+  background: var(--good);
+}
+.tl-st.no {
+  color: var(--amber-ink);
+}
+.tl-st.no::before {
+  background: var(--amber);
+}
+.tl-inline {
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+.add-line {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--link);
+  font-weight: 700;
+}
+
+/* 某一天 */
+.dd {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.dd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.dd-head-main {
+  min-width: 0;
+}
+.dd-head-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: none;
+}
+.dd-head-actions .mini {
+  white-space: nowrap;
+}
+.dd-title {
+  margin: 2px 0 2px;
+  font-size: 19px;
+  line-height: 1.3;
+}
+.dd-route {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 14px;
+}
+.dd-kv {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+.dd-kv > div {
+  background: var(--sunk);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+.dd-kv dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.dd-kv dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-mode {
+  font-size: 13px;
+}
+.dd-tabs {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dd-tabs button {
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 6px 0 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.dd-tabs button.on {
+  color: var(--sign);
+  box-shadow: inset 0 -2.5px 0 var(--sign);
+}
+.dd-plan {
+  display: grid;
+  gap: 12px;
+}
+.dd-stops {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+ol.plain.dd-stops > li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border: 0;
+  font-size: 14px;
+  position: relative;
+}
+.dd-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--sign);
+  background: var(--surface);
+  position: relative;
+  z-index: 1;
+}
+.dd-dot.end {
+  background: var(--sign);
+}
+ol.plain.dd-stops > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 18px;
+  bottom: -8px;
+  width: 2px;
+  background: var(--line);
+}
+.dd-end {
+  font-weight: 700;
+}
+.dd-notes {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+.dd-stay {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--amber);
+  background: var(--surface);
+}
+.dd-stay.booked {
+  border-left-color: var(--good);
+}
+.dd-stay.home {
+  border-left-color: var(--line);
+  font-weight: 700;
+}
+.dd-stay-name {
+  font-size: 15px;
+}
+.dd-suggest {
+  margin: 2px 0;
+}
+.btn-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.dd-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.dd-nav button {
+  font-size: 13px;
+}
+.dd .guide {
+  margin-top: 0;
+}
+.dd .guide > h3:first-child,
+.dd .guide > .ai-row + h3 {
+  margin-top: 4px;
+}
+
+/* 手机：从下往上拉出的面板 */
+.grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: -4px auto 10px;
+}
+.day-sheet .sheet-inner {
+  max-height: 88vh;
+  overscroll-behavior: contain;
+}
+.sheet-inner {
+  overflow-x: hidden;
+}
+
+/* 右下角「改行程」 */
+.fab {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(var(--dock-h) + 14px + env(safe-area-inset-bottom));
+  z-index: 950;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  font-weight: 800;
+  font-size: 15px;
+  background: var(--sign);
+  color: var(--sign-ink);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.25);
+}
+.ask-sheet .sheet-inner {
+  display: grid;
+  gap: 8px;
+}
+.ask-sheet h2 {
+  margin: 0;
+}
+@media (min-width: 720px) {
+  .fab {
+    bottom: 24px;
+    right: max(24px, calc((100vw - 720px) / 2 - 160px));
+  }
+  .app.with-side ~ .fab,
+  .fab {
+    right: 24px;
+  }
+}
+
+/* 提示条 */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  z-index: 1100;
+  max-width: min(92vw, 520px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+}
+
+/* 全屏地图 */
+.map-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--paper);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.mo-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px max(12px, env(safe-area-inset-left, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
+  min-width: 0;
+}
+.mo-top .chips {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+.mo-close {
+  flex: none;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.mo-map {
+  min-height: 0;
+  position: relative;
+}
+.mo-map .map-wrap,
+.mo-map .map {
+  height: 100%;
+}
+.mo-card {
+  padding: 10px max(14px, env(safe-area-inset-left, 0px)) calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.mo-card p {
+  margin: 0;
+}
+
+/* 「方案」页 */
+.page-head h1 {
+  font-size: 22px;
+  margin: 4px 0 4px;
+}
+.page-head p {
+  margin: 0 0 12px;
+}
+.pcard-use {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--link);
+}
+.plan-compare {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.plan-compare > .seg-toggle {
+  justify-self: start;
+}
+.multi.compact {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 8px 8px;
+}
+.ask-card {
+  display: grid;
+  gap: 4px;
+}
+details.history > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 2px 0;
+}
+details.history[open] > summary {
+  margin-bottom: 10px;
+}
+details.advanced {
+  margin: 2px 0 6px;
+}
+details.advanced > summary {
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+/* 「预订」页 */
+.budget-card {
+  display: grid;
+  gap: 8px;
+}
+.budget-card .budget-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.budget-card .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.budget-card .legend li {
+  padding: 0;
+  border: 0;
+}
+.budget-card .legend b {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.sw {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  vertical-align: 0;
+}
+.sw.c-fuel { background: var(--c-fuel); }
+.sw.c-accommodation { background: var(--c-accommodation); }
+.sw.c-food { background: var(--c-food); }
+.sw.c-activity { background: var(--c-activity); }
+.sw.c-transport { background: var(--c-transport); }
+.sw.c-shopping { background: var(--c-shopping); }
+.sw.c-other { background: var(--c-other); }
+.budget-card .budget-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.bk-sec {
+  margin: 22px 0 0;
+}
+.bk-sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.bk-sec-head h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+.bk-sec > p {
+  margin: 0 0 8px;
+}
+.bk-list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+ul.plain.bk-list > li.bk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  border-left: 4px solid transparent;
+}
+ul.plain.bk-list > li.bk-row:last-child {
+  border-bottom: 0;
+}
+ul.plain.bk-list > li.bk-row.s-todo {
+  border-left-color: var(--amber);
+}
+ul.plain.bk-list > li.bk-row.s-booked,
+ul.plain.bk-list > li.bk-row.s-paid {
+  border-left-color: var(--good);
+}
+ul.plain.bk-list > li.bk-row.auto {
+  border-left-color: transparent;
+}
+.bk-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.bk-title {
+  line-height: 1.35;
+}
+.bk-suggest {
+  color: var(--muted);
+}
+.bk-actions {
+  margin-top: 2px;
+}
+.bk-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.bk-amt {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.bk-amt-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 700;
+}
+.bk-amt-edit input {
+  width: 76px;
+  padding: 4px 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.status-btn {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.status-btn.s-todo {
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+  border-color: var(--amber);
+}
+.status-btn.s-booked {
+  background: var(--good-soft);
+  color: var(--good);
+}
+.status-btn.s-paid {
+  background: var(--good);
+  color: var(--sign-ink);
+}
+.bk-row .stay-options {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+}
+.bk-row .stay-options .stay-opt {
+  border-left-width: 1px;
+}
+
+/* 「准备」页 */
+.countdown {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: var(--radius);
+  background: var(--sign);
+  color: var(--sign-ink);
+}
+.countdown b {
+  font-size: 22px;
+}
+.countdown .muted {
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* 宽屏：时间线旁边常驻地图 */
+@media (min-width: 980px) {
+  .route-card {
+    display: none;
+  }
+}
+ol.plain {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.bk-side {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.bk-side .icon {
+  min-width: 0;
+  padding: 0 4px;
+  height: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+a.mini.on {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--sign);
+  border: 1px solid var(--sign);
+  color: #fff;
+}
+.toast {
+  top: auto;
+  bottom: calc(var(--dock-h) + 76px + env(safe-area-inset-bottom));
+}
+@media (min-width: 720px) {
+  .toast {
+    bottom: 24px;
+  }
 }

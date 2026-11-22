@@ -94,6 +94,8 @@ export interface Expense {
   /** 关联到第几天（Day.id），可为空 */
   dayId: string | null;
   paid: boolean;
+  /** 已预订（门票、渡轮等需要提前订的项目） */
+  booked?: boolean;
 }
 
 export interface ChecklistItem {

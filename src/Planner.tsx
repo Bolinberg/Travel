@@ -5,6 +5,8 @@ import { currentPlanId, planOptions, versionTrip } from './versions';
 import { editEngine, editPlanWithAi } from './ai';
 import { proposalFromAi, proposalTrip, type Proposal } from './replan';
 import { Comparison } from './Replan';
+import { MultiCompare } from './Versions';
+import TripMap from './TripMap';
 
 /*
  * 规划工作台：方案卡片（可比较的指标条）+ 逐日对比矩阵 + 「告诉我怎么改」输入框。
@@ -54,19 +56,7 @@ function stats(t: Trip) {
 
 /* ---------------- 方案卡片 ---------------- */
 
-export function PlanBoard({
-  trip,
-  view,
-  setView,
-  onSwitch,
-  onNew,
-}: {
-  trip: Trip;
-  view: 'days' | 'matrix';
-  setView: (v: 'days' | 'matrix') => void;
-  onSwitch: (id: string) => void;
-  onNew: () => void;
-}) {
+export function PlanBoard({ trip, onSwitch, onNew }: { trip: Trip; onSwitch: (id: string) => void; onNew: () => void }) {
   const plans = planViews(trip);
   const all = plans.map((p) => ({ p, s: stats(p.trip) }));
   const max = {
@@ -82,19 +72,6 @@ export function PlanBoard({
 
   return (
     <section className="board" aria-label="行程方案">
-      <div className="board-head">
-        <h2>行程方案</h2>
-        {plans.length > 1 && (
-          <div className="seg-toggle" role="tablist" aria-label="查看方式">
-            <button role="tab" aria-selected={view === 'days'} className={view === 'days' ? 'on' : ''} onClick={() => setView('days')}>
-              逐日行程
-            </button>
-            <button role="tab" aria-selected={view === 'matrix'} className={view === 'matrix' ? 'on' : ''} onClick={() => setView('matrix')}>
-              方案对比
-            </button>
-          </div>
-        )}
-      </div>
       <div className="board-cards">
         {all.map(({ p, s }) => (
           <button
@@ -106,7 +83,8 @@ export function PlanBoard({
           >
             <span className="pcard-top">
               <span className="pcard-tag">{p.tag}</span>
-              {p.active && plans.length > 1 && <span className="pcard-now">正在看</span>}
+              {p.active && plans.length > 1 && <span className="pcard-now">正在用</span>}
+              {!p.active && p.id && <span className="pcard-use">改用这个</span>}
             </span>
             <span className="pcard-name">{p.name}</span>
             <span className="pcard-rows">
@@ -167,7 +145,7 @@ export function PlanMatrix({ trip, onSwitch }: { trip: Trip; onSwitch: (id: stri
                 <th key={p.id ?? 'current'} className={p.active ? 'on' : ''}>
                   <button className="mx-head" onClick={() => p.id && onSwitch(p.id)} disabled={!p.id || p.active}>
                     <span className="pcard-tag">{p.tag}</span> {p.name}
-                    {p.active ? <span className="pcard-now">正在看</span> : <span className="mx-switch">切换</span>}
+                    {p.active ? <span className="pcard-now">正在用</span> : <span className="mx-switch">改用</span>}
                   </button>
                 </th>
               ))}
@@ -357,6 +335,98 @@ export function AskBar({
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+/* ---------------- 「方案」页 ---------------- */
+
+/** 选方案：方案卡片 + 逐日 / 指标 / 地图对比 + 一句话生成新方案 + 改天数 + 历史版本 */
+export function PlansPage({
+  trip,
+  onUse,
+  onApplyEdit,
+  onSavePlan,
+  replan,
+  history,
+}: {
+  trip: Trip;
+  onUse: (id: string) => void;
+  onApplyEdit: (next: Trip, instruction: string) => void;
+  onSavePlan: (plan: Trip, title: string) => void;
+  replan: React.ReactNode;
+  history: React.ReactNode;
+}) {
+  const plans = planViews(trip);
+  const active = plans.find((p) => p.active);
+  const [view, setView] = useState<'days' | 'metrics' | 'map'>('days');
+  const [mapIdx, setMapIdx] = useState(0);
+  const [focusKey, setFocusKey] = useState(0);
+  const askRef = useRef<HTMLElement>(null);
+  const historyCount = (trip.versions ?? []).filter((v) => v.kind !== 'proposal').length;
+  const VIEWS: [typeof view, string][] = [
+    ['days', '逐日'],
+    ['metrics', '指标'],
+    ['map', '地图'],
+  ];
+
+  return (
+    <>
+      <div className="page-head">
+        <h1>选方案</h1>
+        <p className="muted small">
+          {plans.length > 1
+            ? `共 ${plans.length} 个方案，正在用 ${active?.tag ?? ''}。点卡片就改用那个方案，当前的修改会自动存回原方案，随时能切回来。`
+            : '现在只有一个方案。在下面用一句话描述想要的变化，就能生成新方案来对比。'}
+        </p>
+      </div>
+      <PlanBoard
+        trip={trip}
+        onSwitch={onUse}
+        onNew={() => {
+          setFocusKey((k) => k + 1);
+          askRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+      />
+      {plans.length > 1 && (
+        <section className="plan-compare" aria-label="方案对比">
+          <div className="seg-toggle" role="tablist" aria-label="对比方式">
+            {VIEWS.map(([k, label]) => (
+              <button key={k} role="tab" aria-selected={view === k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {view === 'days' && <PlanMatrix trip={trip} onSwitch={onUse} />}
+          {view === 'metrics' && (
+            <MultiCompare
+              compact
+              schemes={plans.map((p) => ({ key: p.id ?? 'current', name: `${p.tag}：${p.name}`, trip: p.trip }))}
+              onRestore={onUse}
+            />
+          )}
+          {view === 'map' && (
+            <>
+              <div className="chips">
+                {plans.map((p, i) => (
+                  <button key={p.id ?? 'c'} className={mapIdx === i ? 'chip active' : 'chip'} onClick={() => setMapIdx(i)}>
+                    {p.tag}：{p.name}
+                  </button>
+                ))}
+              </div>
+              <TripMap trip={plans[Math.min(mapIdx, plans.length - 1)].trip} focus={null} height={340} />
+            </>
+          )}
+        </section>
+      )}
+      <section className="card ask-card" ref={askRef}>
+        <AskBar trip={trip} intent="new" focusKey={focusKey} onApply={onApplyEdit} onSaveAsPlan={onSavePlan} />
+      </section>
+      {replan}
+      <details className="card history">
+        <summary>历史版本（{historyCount}）</summary>
+        {history}
+      </details>
     </>
   );
 }
