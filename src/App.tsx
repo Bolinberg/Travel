@@ -571,7 +571,13 @@ function Timeline({
                     {formatDate(addDays(trip.startDate, i))} · {leg(d)}
                   </span>
                   <span className="tl-stay">
-                    {d.accommodation ? `住 ${stayLabel(d)}` : last ? '到家' : '当晚不住宿'}
+                    {d.accommodation
+                      ? d.stayOptions.some((r) => r.picked) || stayLabel(d) !== '还没选住宿'
+                        ? `住 ${stayLabel(d)}`
+                        : `住 ${short(d.to)} · 还没选住宿`
+                      : last
+                        ? '到家'
+                        : '当晚不住宿'}
                   </span>
                 </span>
                 <span className="tl-side">

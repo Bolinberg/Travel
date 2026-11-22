@@ -283,18 +283,19 @@ p {
 
 /* 宽屏：行程 + 常驻地图 */
 .app.with-side {
-  max-width: 1280px;
+  max-width: 1680px;
 }
 .app.with-side .layout {
   display: grid;
-  grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
+  grid-template-columns: minmax(440px, 5fr) minmax(0, 6fr);
   gap: 28px;
   align-items: start;
 }
 .side-map {
   position: sticky;
   top: 72px;
-  height: calc(100vh - 96px);
+  /* 太高的地图会把路线挤成一小块：高度不超过宽度的 1.15 倍 */
+  height: min(calc(100vh - 96px), 960px);
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 8px;
@@ -2841,5 +2842,24 @@ a.mini.on {
 @media (min-width: 720px) {
   .toast {
     bottom: 24px;
+  }
+}
+
+/* 大屏：内容别缩在中间，「改行程」贴着内容右下角 */
+@media (min-width: 720px) {
+  .fab {
+    right: max(24px, calc((100vw - 1680px) / 2 + 24px));
+  }
+}
+@media (min-width: 1500px) {
+  .tl-row {
+    padding: 12px 16px;
+  }
+  .tl-title {
+    font-size: 16px;
+  }
+  .tl-sub,
+  .tl-stay {
+    font-size: 13px;
   }
 }
