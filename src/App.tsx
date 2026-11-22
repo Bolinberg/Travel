@@ -13,7 +13,7 @@ import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
 import { parseInvite } from './sync';
-import { addVersion, restoreVersion, snapshot } from './versions';
+import { addVersion, currentPlanId, planOptions, restoreVersion, snapshot, switchPlan, versionTrip } from './versions';
 import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
@@ -260,6 +260,15 @@ export default function App() {
         <main>
           {tab === 'itinerary' && (
             <>
+              <PlanSwitcher
+                trip={trip}
+                onSwitch={(id) => {
+                  setUndo(null);
+                  setFocus(null);
+                  replaceTrip(switchPlan(trip, id));
+                }}
+                onCompare={() => setTab('versions')}
+              />
               <GuideSign trip={trip} />
               <MissingBanner trip={trip} update={update} />
               <TripStatus trip={trip} goTo={setTab} />
@@ -329,6 +338,45 @@ export default function App() {
   );
 }
 
+/* ---------------- 方案切换 ---------------- */
+
+/** 行程有多个备选方案时，在行程页顶部一键切换 */
+function PlanSwitcher({ trip, onSwitch, onCompare }: { trip: Trip; onSwitch: (id: string) => void; onCompare: () => void }) {
+  const plans = planOptions(trip);
+  if (plans.length < 2) return null;
+  const active = currentPlanId(trip);
+  return (
+    <section className="plans" aria-label="切换方案">
+      <div className="plans-head">
+        <span>行程方案</span>
+        <button className="link" onClick={onCompare}>并排对比</button>
+      </div>
+      <div className="plans-row">
+        {plans.map((v) => {
+          const t = active === v.id ? trip : versionTrip(trip, v);
+          const s = summarize(t);
+          const longest = Math.max(0, ...t.days.map((d) => d.driveHours));
+          const [tag, ...rest] = v.label.split('：');
+          return (
+            <button
+              key={v.id}
+              className={active === v.id ? 'plan on' : 'plan'}
+              aria-pressed={active === v.id}
+              onClick={() => onSwitch(v.id)}
+            >
+              <span className="plan-tag">{rest.length ? tag : '方案'}</span>
+              <span className="plan-name">{rest.length ? rest.join('：') : v.label}</span>
+              <span className="plan-meta">
+                {s.days} 天，最长一天 {longest} 小时，约 {money(s.total)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- 路牌（行程概要） ---------------- */
 
 /** 路牌上列出的地点：沿途过夜地 + 终点，附累计里程；太多时保留首尾和停留最久的地方 */
@@ -360,6 +408,13 @@ function dateRange(start: string, end: string): string {
   return m1 === m2 ? `${m1}月${d1}日 至 ${d2}日` : `${m1}月${d1}日 至 ${m2}月${d2}日`;
 }
 
+/** 有方案切换时，路牌标题显示当前方案名 */
+function planTitle(trip: Trip): string {
+  const id = currentPlanId(trip);
+  const v = id ? trip.versions?.find((x) => x.id === id) : undefined;
+  return v && planOptions(trip).length > 1 ? v.label : trip.name;
+}
+
 function GuideSign({ trip }: { trip: Trip }) {
   const s = useMemo(() => summarize(trip), [trip]);
   const rows = signRows(trip);
@@ -368,7 +423,7 @@ function GuideSign({ trip }: { trip: Trip }) {
     <section className="sign-wrap" aria-label="行程概要">
       <div className="sign">
         <div className="sign-from">{short(trip.days[0]?.from ?? '')} 出发</div>
-        <h1 className="sign-title">{trip.name}</h1>
+        <h1 className="sign-title">{planTitle(trip)}</h1>
         <ul className="sign-rows">
           {rows.map((r, i) => (
             <li key={r.place + i}>

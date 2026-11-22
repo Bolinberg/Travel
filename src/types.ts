@@ -118,6 +118,8 @@ export interface Trip {
   checklist: ChecklistItem[];
   /** 历史版本 / 备选方案 */
   versions?: TripVersion[];
+  /** 当前内容来自哪个备选方案（行程页上的方案切换用） */
+  activePlan?: string;
 }
 
 /** 行程的一个历史版本或备选方案（不含 versions 本身） */

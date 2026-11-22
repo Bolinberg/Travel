@@ -38,3 +38,38 @@ describe('versions', () => {
     expect(duplicateTrip(t, 'copy', '2027-01-01').versions).toBeUndefined();
   });
 });
+
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B } from './templateKI';
+import { currentPlanId, planOptions, switchPlan } from './versions';
+
+describe('switching plans on the itinerary page', () => {
+  it('switches A <-> B and keeps edits made inside each plan', () => {
+    const t0 = createRouteComparisonTrip();
+    const plans = planOptions(t0);
+    const a = plans.find((v) => v.label === COMPARE_A)!;
+    const b = plans.find((v) => v.label === COMPARE_B)!;
+    expect(currentPlanId(t0)).toBe(b.id);
+
+    const tA = switchPlan(t0, a.id);
+    expect(tA.days).toHaveLength(7);
+    expect(tA.name).toBe(t0.name);
+    expect(tA.id).toBe(t0.id);
+    expect(currentPlanId(tA)).toBe(a.id);
+
+    tA.budget = 4321; // 在 A 里改了预算
+    const tB = switchPlan(tA, b.id);
+    expect(tB.days).toHaveLength(9);
+    expect(tB.budget).not.toBe(4321);
+    const backToA = switchPlan(tB, a.id);
+    expect(backToA.budget).toBe(4321); // 切回来修改还在
+    expect(backToA.versions!.filter((v) => v.kind === 'auto')).toHaveLength(0); // 没有多出杂乱的自动存档
+  });
+
+  it('auto-saves content that belongs to no plan before switching', () => {
+    const t0 = createRouteComparisonTrip();
+    const edited = { ...t0, activePlan: undefined, days: t0.days.slice(0, 5) };
+    const a = planOptions(t0).find((v) => v.label === COMPARE_A)!;
+    const next = switchPlan(edited, a.id);
+    expect(next.versions!.some((v) => v.kind === 'auto')).toBe(true);
+  });
+});

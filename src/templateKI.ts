@@ -569,8 +569,9 @@ export function createRouteComparisonTrip(): Trip {
   const snapB = snapshot(b);
   b.versions = [];
   // 列表里新的在上：先加 B 再加 A，对比表里 A 在左、B 在右
-  addVersion(b, COMPARE_B, 'proposal', snapB);
+  const vb = addVersion(b, COMPARE_B, 'proposal', snapB);
   addVersion(b, COMPARE_A, 'proposal', snapA);
+  b.activePlan = vb.id;
   b.name = COMPARE_NAME;
   return b;
 }
