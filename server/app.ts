@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS trips (
 );
 CREATE INDEX IF NOT EXISTS trips_seq ON trips(space_id, seq);
 CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS route_cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, created_at TEXT NOT NULL);
 INSERT OR IGNORE INTO counters VALUES ('seq', 0);
 `;
 
@@ -65,7 +66,27 @@ function rowOut(r: TripRow, withData = true) {
   };
 }
 
-export function createApp(db: DatabaseSync, opts: { corsOrigin?: string } = {}) {
+export interface AppOptions {
+  corsOrigin?: string;
+  /** 访问上游地图 / 路线服务用的 fetch（测试时可替换） */
+  upstreamFetch?: typeof fetch;
+  /** 瓦片上游地址模板，默认 OpenStreetMap */
+  tileUrl?: string;
+  /** 访问上游时的 User-Agent（OpenStreetMap 要求标明应用身份） */
+  userAgent?: string;
+}
+
+const ROUTE_UPSTREAMS: Record<string, string[]> = {
+  car: ['https://routing.openstreetmap.de/routed-car/route/v1/driving/', 'https://router.project-osrm.org/route/v1/driving/'],
+  foot: ['https://routing.openstreetmap.de/routed-foot/route/v1/driving/'],
+  bike: ['https://routing.openstreetmap.de/routed-bike/route/v1/driving/'],
+};
+const COORDS_RE = /^-?\d{1,3}(\.\d+)?,-?\d{1,2}(\.\d+)?(;-?\d{1,3}(\.\d+)?,-?\d{1,2}(\.\d+)?){1,24}$/;
+
+export function createApp(db: DatabaseSync, opts: AppOptions = {}) {
+  const upstream = opts.upstreamFetch ?? fetch;
+  const tileUrl = opts.tileUrl ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const userAgent = opts.userAgent ?? 'TravelPlannerFamily/1.0 (self-hosted family trip planner)';
   db.exec(SCHEMA);
   const nextSeq = () => {
     db.prepare(`UPDATE counters SET value = value + 1 WHERE name = 'seq'`).run();
@@ -86,6 +107,67 @@ export function createApp(db: DatabaseSync, opts: { corsOrigin?: string } = {}) 
   app.use('/api/*', bodyLimit({ maxSize: MAX_BODY, onError: (c) => c.json({ error: '数据太大' }, 413) }));
 
   app.get('/api/health', (c) => c.json({ ok: true }));
+
+  /* ---------- 地图代理：瓦片 + 路线（同源访问，服务端缓存） ---------- */
+
+  const tileCache = new Map<string, ArrayBuffer>(); // 简单 LRU
+  const TILE_CACHE_MAX = 800;
+
+  app.get('/api/map/tile/:z/:x/:file', async (c) => {
+    const z = Number(c.req.param('z'));
+    const x = Number(c.req.param('x'));
+    const m = /^(\d+)\.png$/.exec(c.req.param('file'));
+    const y = m ? Number(m[1]) : NaN;
+    const n = 2 ** z;
+    if (!Number.isInteger(z) || z < 0 || z > 19 || !Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= n || y >= n) {
+      return c.json({ error: '瓦片坐标不合法' }, 400);
+    }
+    const key = `${z}/${x}/${y}`;
+    let buf = tileCache.get(key);
+    if (buf) {
+      tileCache.delete(key);
+      tileCache.set(key, buf);
+    } else {
+      try {
+        const r = await upstream(tileUrl.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y)), {
+          headers: { 'User-Agent': userAgent },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!r.ok) return c.json({ error: `上游瓦片服务返回 ${r.status}` }, 502);
+        buf = await r.arrayBuffer();
+      } catch {
+        return c.json({ error: '无法连接上游瓦片服务' }, 502);
+      }
+      tileCache.set(key, buf);
+      if (tileCache.size > TILE_CACHE_MAX) tileCache.delete(tileCache.keys().next().value!);
+    }
+    return c.body(buf, 200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=604800' });
+  });
+
+  app.get('/api/map/route/:profile/:coords', async (c) => {
+    const profile = c.req.param('profile');
+    const coords = c.req.param('coords');
+    if (!ROUTE_UPSTREAMS[profile] || !COORDS_RE.test(coords)) return c.json({ error: '路线参数不合法' }, 400);
+    const key = `${profile}:${coords}`;
+    const hit = db.prepare('SELECT body FROM route_cache WHERE key = ?').get(key) as { body: string } | undefined;
+    if (hit) return c.body(hit.body, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' });
+    for (const base of ROUTE_UPSTREAMS[profile]) {
+      try {
+        const r = await upstream(`${base}${coords}?overview=simplified&geometries=geojson`, {
+          headers: { 'User-Agent': userAgent },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) continue;
+        const body = await r.text();
+        if (JSON.parse(body).code !== 'Ok') continue;
+        db.prepare('INSERT OR REPLACE INTO route_cache (key, body, created_at) VALUES (?, ?, ?)').run(key, body, now());
+        return c.body(body, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=86400' });
+      } catch {
+        /* 换下一个上游 */
+      }
+    }
+    return c.json({ error: '无法获取路线' }, 502);
+  });
 
   // 创建家庭空间：返回密钥（只返回这一次）
   app.post('/api/spaces', async (c) => {

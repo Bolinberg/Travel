@@ -58,6 +58,21 @@ export function hashTrip(t: Trip): string {
 
 export const normalizeServer = (s: string) => s.trim().replace(/\/+$/, '');
 
+/** 构建时可用 VITE_SYNC_SERVER 指定默认服务器（例如部署在 GitHub Pages 时）；由后端托管页面时默认用同一个地址 */
+export function defaultServer(): string {
+  const env = (import.meta.env?.VITE_SYNC_SERVER as string | undefined) ?? '';
+  if (env) return normalizeServer(env);
+  if (typeof location !== 'undefined' && location.protocol.startsWith('http') && !location.hostname.endsWith('github.io')) {
+    return location.origin;
+  }
+  return '';
+}
+
+/** 地图瓦片 / 路线代理所在的后端地址（没有后端时为空，直接访问公共服务） */
+export function mapProxyBase(): string {
+  return loadSyncConfig()?.server ?? defaultServer();
+}
+
 /* ---------- API ---------- */
 
 export class SyncError extends Error {

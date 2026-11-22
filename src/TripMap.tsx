@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import type { Day, Mode, Place, Trip } from './types';
 import { fetchWiki, findPlace } from './geo';
 import { dayLegs, groupLegs, MODES, routeGroup, sketchSegment } from './route';
+import { mapProxyBase } from './sync';
 
 export const DAY_COLORS = ['#0f766e', '#c2410c', '#7c3aed', '#0369a1', '#be123c', '#4d7c0f', '#a16207', '#0e7490', '#9d174d'];
 export const dayColor = (i: number) => DAY_COLORS[i % DAY_COLORS.length];
@@ -53,13 +54,20 @@ function popupHtml(p: Place, img?: string) {
   </div>`;
 }
 
-const TILES = [
-  {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    opts: { subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' },
-  },
-  { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opts: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } },
-];
+/** 底图来源，按顺序尝试：自己的后端代理 → CARTO → OpenStreetMap */
+function tileSources(): { url: string; opts: L.TileLayerOptions }[] {
+  const proxy = mapProxyBase();
+  return [
+    ...(proxy
+      ? [{ url: `${proxy}/api/map/tile/{z}/{x}/{y}.png`, opts: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } }]
+      : []),
+    {
+      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      opts: { subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' },
+    },
+    { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opts: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } },
+  ];
+}
 
 export default function TripMap({
   trip,
@@ -78,27 +86,51 @@ export default function TripMap({
   const [failed, setFailed] = useState(0);
   const [retry, setRetry] = useState(0);
   const [modesUsed, setModesUsed] = useState<Mode[]>([]);
+  const [tilesFailed, setTilesFailed] = useState(false);
+  const [hideHelp, setHideHelp] = useState(false);
+  const lastBounds = useRef<L.LatLngBounds | null>(null);
 
   useEffect(() => {
     if (!el.current) return;
-    const m = L.map(el.current, { zoomControl: true, attributionControl: true });
-    // 底图：CARTO（本地打开文件也能加载）；连续出错则换 OpenStreetMap
-    let tileIdx = 0;
+    // 允许 1/4 级缩放，路线才能铺满地图（整数级缩放常常只能占一半）
+    const m = L.map(el.current, { zoomControl: true, attributionControl: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120 });
+    // 底图：一个来源连续出错（且一张都没加载成功）就换下一个；全部失败时提示原因
+    const sources = tileSources();
+    let idx = 0;
     let errors = 0;
-    let tiles = L.tileLayer(TILES[0].url, TILES[0].opts).addTo(m);
-    const onErr = () => {
-      if (++errors < 4 || tileIdx >= TILES.length - 1) return;
-      tileIdx++;
+    let loaded = 0;
+    let tiles: L.TileLayer;
+    const use = (i: number) => {
+      idx = i;
       errors = 0;
-      m.removeLayer(tiles);
-      tiles = L.tileLayer(TILES[tileIdx].url, TILES[tileIdx].opts).addTo(m);
-      tiles.on('tileerror', onErr);
+      loaded = 0;
+      tiles = L.tileLayer(sources[i].url, sources[i].opts).addTo(m);
+      tiles.on('tileload', () => {
+        loaded++;
+        setTilesFailed(false);
+      });
+      tiles.on('tileerror', () => {
+        if (loaded > 0 || ++errors < 4) return;
+        if (idx < sources.length - 1) {
+          m.removeLayer(tiles);
+          use(idx + 1);
+        } else {
+          setTilesFailed(true);
+        }
+      });
     };
-    tiles.on('tileerror', onErr);
+    use(0);
     m.setView([-37.0, 141.5], 6);
     map.current = m;
     layer.current = L.layerGroup().addTo(m);
+    // 容器尺寸变化（切换标签页、旋转屏幕、窗口变宽）时重新铺满路线
+    const ro = new ResizeObserver(() => {
+      m.invalidateSize({ animate: false });
+      if (lastBounds.current) m.fitBounds(lastBounds.current, { padding: [24, 24], maxZoom: 13, animate: false });
+    });
+    ro.observe(el.current);
     return () => {
+      ro.disconnect();
       m.stop();
       m.remove();
       map.current = null;
@@ -174,7 +206,11 @@ export default function TripMap({
     }
 
     setModesUsed([...used]);
-    if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 13, animate: false });
+    lastBounds.current = bounds.length ? L.latLngBounds(bounds) : null;
+    if (lastBounds.current) {
+      m.invalidateSize({ animate: false });
+      m.fitBounds(lastBounds.current, { padding: [24, 24], maxZoom: 13, animate: false });
+    }
     setRouting(pending.length > 0);
     setFailed(0);
     Promise.all(pending).then((res) => {
@@ -187,19 +223,25 @@ export default function TripMap({
     };
   }, [trip, focus, retry]);
 
-  // 容器尺寸变化（切换标签页）时刷新
-  useEffect(() => {
-    const t = setTimeout(() => map.current?.invalidateSize(), 50);
-    return () => clearTimeout(t);
-  });
 
   return (
     <div className="map-wrap">
       <div ref={el} className="map" style={{ height }} />
+      {tilesFailed && !hideHelp && (
+        <div className="map-offline">
+          <b>🗺️ 地图底图加载不了</b>
+          <p>
+            通常是当前的打开方式不允许联网，例如在聊天、邮件或文件 App 里直接预览 HTML 文件。请改用 Chrome、Safari、Edge
+            等浏览器打开，或使用部署后的网址（见 README「部署」）。
+          </p>
+          <p>下面的标记和连线仍按坐标显示，但看不到道路和地名。</p>
+          <button className="mini" onClick={() => setHideHelp(true)}>知道了</button>
+        </div>
+      )}
       {routing && <div className="map-note">正在获取真实路线…</div>}
       {!routing && failed > 0 && (
         <div className="map-note warn">
-          {failed} 段未能获取真实道路，暂显示为虚线{' '}
+          {failed} 段未能获取真实道路，暂显示为虚线{tilesFailed ? '（网络不可用）' : ''}{' '}
           <button className="link" onClick={() => setRetry((n) => n + 1)}>重试</button>
         </div>
       )}

@@ -50,6 +50,8 @@
 
 - 每天可设主要交通方式（自驾 / 步行 / 骑行 / 公交火车电车 / 轮渡 / 飞机），也可以在编辑里「分段设置」，例如开车到市区再坐电车去 Glenelg。
 - 自驾、步行、骑行按真实道路计算（OSRM：routing.openstreetmap.de 的 car/foot/bike，自驾失败回退 router.project-osrm.org，限流 + 缓存）；公交、轮渡没有免费路线服务，画示意线，飞机画大圆航线，均在线上和提示中标明「示意」。
+- 部署了后端时，地图瓦片和路线**经由自己的后端代理**（`/api/map/tile`、`/api/map/route`，同源访问、服务端缓存，并按 OpenStreetMap 要求标明 User-Agent），其次才直连 CARTO / OpenStreetMap / OSRM 公共服务。
+- 底图所有来源都加载失败时（常见于在聊天 / 文件 App 里直接预览 HTML，这类环境禁止联网），地图上会说明原因和解决办法。
 - 地图用不同线型 + 图标区分交通方式并显示图例；获取失败的路段显示为虚线并可「重试」。地图页会用实际路线核对当天填写的里程/时间，不一致时可一键更新。
 - 「途经点按顺路排序」自动重排途经点；AI 新增的景点会插入最顺路的位置。Google 导航链接使用当天的交通方式；油费只计算自驾的日子。
 
@@ -127,7 +129,7 @@ npm run build    # 打包前端（dist/）和后端（dist-server/）
 npm start        # 启动后端（同时托管 dist/），默认 http://localhost:8787
 ```
 
-需要 Node.js 22.13 或以上（使用内置的 `node:sqlite`）。环境变量：`PORT`、`DB_PATH`（默认 `./data/travel.db`）、`HOST`、`CORS_ORIGIN`。
+需要 Node.js 22.13 或以上（使用内置的 `node:sqlite`）。环境变量：`PORT`、`DB_PATH`（默认 `./data/travel.db`）、`HOST`、`CORS_ORIGIN`、`TILE_URL`（瓦片上游，默认 OpenStreetMap；家庭以外较大用量请换成商用瓦片服务）、`MAP_USER_AGENT`。
 
 ## 后续可做
 

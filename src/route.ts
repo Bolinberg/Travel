@@ -1,5 +1,6 @@
 import type { Day, Mode, Place, Trip } from './types';
 import { findPlace } from './geo';
+import { mapProxyBase } from './sync';
 
 /*
  * 交通方式与路线：
@@ -135,7 +136,7 @@ async function limited<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-const ENDPOINTS: Record<'car' | 'foot' | 'bike', string[]> = {
+const PUBLIC_ENDPOINTS: Record<'car' | 'foot' | 'bike', string[]> = {
   car: ['https://routing.openstreetmap.de/routed-car/route/v1/driving/', 'https://router.project-osrm.org/route/v1/driving/'],
   foot: ['https://routing.openstreetmap.de/routed-foot/route/v1/driving/'],
   bike: ['https://routing.openstreetmap.de/routed-bike/route/v1/driving/'],
@@ -150,7 +151,10 @@ export async function fetchRoadRoute(
   const key = `route3:${profile}:${coords}`;
   const cached = cacheGet<{ path: [number, number][]; km: number; hours: number }>(key);
   if (cached) return cached;
-  for (const base of ENDPOINTS[profile]) {
+  // 有自己的后端时先走后端代理（同源访问、服务端缓存），再直连公共服务
+  const proxy = mapProxyBase();
+  const endpoints = [...(proxy ? [`${proxy}/api/map/route/${profile}/`] : []), ...PUBLIC_ENDPOINTS[profile]];
+  for (const base of endpoints) {
     try {
       const r = await limited(() =>
         fetch(`${base}${coords}?overview=simplified&geometries=geojson`, { signal: AbortSignal.timeout(15000) }),

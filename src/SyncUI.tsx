@@ -1,17 +1,10 @@
 import { useState } from 'react';
 import type { Store } from './storage';
 import type { SyncState } from './useSync';
-import { createSpace, getSpace, inviteLink, normalizeServer, parseInvite, rotateKey, type SyncConfig } from './sync';
+import { createSpace, defaultServer, getSpace, inviteLink, normalizeServer, parseInvite, rotateKey, type SyncConfig } from './sync';
 
-/** 构建时可用 VITE_SYNC_SERVER 指定默认服务器（例如部署在 GitHub Pages 时）；由后端托管页面时默认用同一个地址 */
-export function defaultServer(): string {
-  const env = (import.meta.env.VITE_SYNC_SERVER as string | undefined) ?? '';
-  if (env) return normalizeServer(env);
-  if (typeof location !== 'undefined' && location.protocol.startsWith('http') && !location.hostname.endsWith('github.io')) {
-    return location.origin;
-  }
-  return '';
-}
+export { defaultServer };
+
 
 /** 邀请链接指向的 App 地址：网页打开时用当前地址；本地文件打开时用服务器地址（服务器也托管 App） */
 function appUrl(server: string): string {

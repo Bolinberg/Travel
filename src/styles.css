@@ -296,3 +296,12 @@ button.ai-btn.big { padding: 6px 14px; font-size: 15px; border-radius: 10px; }
 .sync-badge.s-offline, .sync-badge.s-error { color: var(--warn); border-color: currentColor; }
 .card.join { border-color: var(--accent); border-width: 2px; }
 hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+
+/* ---------- 地图加载失败提示 ---------- */
+.map-offline {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 700;
+  width: min(92%, 360px); background: var(--surface); color: var(--text);
+  border: 1px solid var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.5;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.map-offline p { margin: 6px 0; color: var(--muted); }
