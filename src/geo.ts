@@ -41,6 +41,31 @@ export interface WikiInfo {
 
 const wikiMemo = new Map<string, Promise<WikiInfo | null>>();
 
+// 维基百科对同时大量请求会返回 429：最多同时 2 个
+let wikiActive = 0;
+const wikiQueue: (() => void)[] = [];
+async function wikiSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (wikiActive >= 2) await new Promise<void>((r) => wikiQueue.push(r));
+  wikiActive++;
+  try {
+    return await fn();
+  } finally {
+    wikiActive--;
+    wikiQueue.shift()?.();
+  }
+}
+
+/** 按维基媒体的 API 礼仪标明应用身份；遇到 429 限流按 Retry-After 退避重试 */
+async function fetchWikiWithRetry(url: string): Promise<Response | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await fetch(url, { headers: { 'Api-User-Agent': 'TravelPlannerFamily/1.0 (family road-trip planner)' } });
+    if (r.status !== 429) return r;
+    const wait = Math.min(10, Number(r.headers.get('Retry-After')) || 2 ** (attempt + 1));
+    await new Promise((res) => setTimeout(res, wait * 1000));
+  }
+  return null;
+}
+
 export function fetchWiki(title: string): Promise<WikiInfo | null> {
   const key = 'wiki:' + title;
   const cached = cacheGet<WikiInfo>(key);
@@ -49,10 +74,13 @@ export function fetchWiki(title: string): Promise<WikiInfo | null> {
     const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(title.replace(/ /g, '_'));
     wikiMemo.set(
       title,
-      fetch(url)
-        .then((r) => (r.ok ? r.json() : null))
+      wikiSlot(() => fetchWikiWithRetry(url))
+        .then((r) => (r && r.ok ? r.json() : null))
         .then((j) => {
-          if (!j) return null;
+          if (!j) {
+            wikiMemo.delete(title); // 失败不缓存，下次展开时再试
+            return null;
+          }
           const info: WikiInfo = {
             thumb: j.thumbnail?.source,
             extract: j.extract,
@@ -61,7 +89,10 @@ export function fetchWiki(title: string): Promise<WikiInfo | null> {
           cacheSet(key, info);
           return info;
         })
-        .catch(() => null),
+        .catch(() => {
+          wikiMemo.delete(title);
+          return null;
+        }),
     );
   }
   return wikiMemo.get(title)!;

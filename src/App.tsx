@@ -204,6 +204,12 @@ export default function App() {
               <GuideSign trip={trip} />
               <MissingBanner trip={trip} update={update} />
               <TripStatus trip={trip} goTo={setTab} />
+              {!wide && (
+                <section className="route-card" aria-label="路线地图">
+                  <TripMap trip={trip} focus={null} height={230} />
+                  <button className="link" onClick={() => showOnMap(null)}>打开大地图</button>
+                </section>
+              )}
               {undo && undo.trip.id === trip.id && (
                 <section className="notice">
                   <span>已调整行程：{undo.label}</span>
@@ -492,6 +498,7 @@ function DayCard({
   const acc = day.accommodation;
 
   const sightCount = dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from).length;
+  const [guideOpen, setGuideOpen] = useState(false);
   const last = index === trip.days.length - 1;
 
   return (
@@ -561,11 +568,11 @@ function DayCard({
               Google 地图导航 ↗
             </a>
           </div>
-          <details className="fold">
+          <details className="fold" onToggle={(e) => setGuideOpen((e.target as HTMLDetailsElement).open)}>
             <summary>
               景点 {sightCount}，住宿推荐 {day.stayOptions.length}，餐饮推荐 {day.dining.length}
             </summary>
-            <DayGuide trip={trip} day={day} index={index} update={update} />
+            {guideOpen && <DayGuide trip={trip} day={day} index={index} update={update} />}
           </details>
         </>
       ) : (
@@ -1113,10 +1120,15 @@ function AiButton({ trip, index, update }: { trip: Trip; index: number; update: 
 
 function PlaceCard({ place }: { place: Place }) {
   const wiki = useWiki(place.wiki);
+  const [imgFailed, setImgFailed] = useState(false);
   return (
     <article className="sight">
       <div className="photo">
-        {wiki?.thumb ? <img src={wiki.thumb} alt={place.label} loading="lazy" /> : <span>📷</span>}
+        {wiki?.thumb && !imgFailed ? (
+          <img src={wiki.thumb} alt={place.label} loading="lazy" onError={() => setImgFailed(true)} />
+        ) : (
+          <span aria-hidden="true">📷</span>
+        )}
       </div>
       <div className="body">
         <b>{place.label}</b>

@@ -28,7 +28,7 @@ function lineStyle(mode: Mode, color: string, routed: boolean): L.PolylineOption
   }
   switch (mode) {
     case 'drive':
-      return { color, weight: 5, opacity: 0.85 };
+      return { color, weight: 5, opacity: 0.85, dashArray: '' };
     case 'walk':
       return { color, weight: 4, opacity: 0.9, dashArray: '1 8', lineCap: 'round' };
     case 'bike':
@@ -48,13 +48,16 @@ function escapeHtml(s: string) {
 
 function popupHtml(p: Place, img?: string) {
   return `<div class="pop">
-    ${img ? `<img src="${escapeHtml(img)}" alt="" />` : ''}
+    ${img ? `<img src="${escapeHtml(img)}" alt="" onerror="this.remove()" />` : ''}
     <b>${escapeHtml(p.label)}</b>
     ${p.desc ? `<p>${escapeHtml(p.desc)}</p>` : ''}
   </div>`;
 }
 
-/** 底图来源，按顺序尝试：自己的后端代理 → CARTO → OpenStreetMap */
+/**
+ * 底图来源，按顺序尝试：自己的后端代理 → OpenStreetMap。
+ * 不用 CARTO：它现在要求 API Key，没有 Key 时仍返回 200，但图片是「API KEY REQUIRED」水印，无法自动识别失败。
+ */
 function tileSources(): { url: string; opts: L.TileLayerOptions }[] {
   const proxy = mapProxyBase();
   return [
@@ -62,10 +65,14 @@ function tileSources(): { url: string; opts: L.TileLayerOptions }[] {
       ? [{ url: `${proxy}/api/map/tile/{z}/{x}/{y}.png`, opts: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } }]
       : []),
     {
-      url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-      opts: { subdomains: 'abcd', maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' },
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      opts: {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        // OpenStreetMap 的使用政策要求带上来源页面
+        referrerPolicy: 'strict-origin-when-cross-origin',
+      },
     },
-    { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opts: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } },
   ];
 }
 

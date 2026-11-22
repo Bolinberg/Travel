@@ -1443,3 +1443,17 @@ button.left {
     break-inside: avoid;
   }
 }
+
+/* 手机行程页的路线小地图 */
+.route-card {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  margin: -12px 0 28px;
+}
+.route-card .map-wrap {
+  width: 100%;
+}
+.route-card .map {
+  border: 1px solid var(--line);
+}
