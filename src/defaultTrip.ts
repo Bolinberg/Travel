@@ -279,12 +279,17 @@ export function duplicateTrip(src: Trip, name: string, startDate: string): Trip 
   return t;
 }
 
-import { createKangarooIslandTrip } from './templateKI';
+import { createKangarooIslandTrip, createLoopTrip } from './templateKI';
 
 export const TEMPLATES = [
   {
+    key: 'mel-loop-6',
+    label: '6 天往返：墨尔本 → 十二门徒岩 → 甘比尔山 → 阿德莱德（2 晚）→ 墨尔本（每天车程 5 小时内）',
+    create: createLoopTrip,
+  },
+  {
     key: 'mel-ki-6',
-    label: '6 天：墨尔本 → 大洋路 → 甘比尔山 → 阿德莱德 → 袋鼠岛（每天车程 5 小时内）',
+    label: '6 天单程：墨尔本 → 甘比尔山 → 阿德莱德 → 袋鼠岛（不含回墨尔本）',
     create: createKangarooIslandTrip,
   },
   { key: 'mel-adl', label: '示例：墨尔本 → 大洋路 → 阿德莱德（9 天，含景点/住宿/餐饮推荐）', create: createDefaultTrip },

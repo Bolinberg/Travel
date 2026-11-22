@@ -175,3 +175,78 @@ export function createKangarooIslandTrip(): Trip {
     ],
   };
 }
+
+/* ------------------------------------------------------------------
+ * 6 天往返：墨尔本 → 十二门徒岩 → Warrnambool → 甘比尔山 → Robe → 库隆 → 阿德莱德（2 晚）→ Dimboola → 墨尔本
+ * 每天车程按 OSRM 实际路线计算：4.6 / 4.5 / 4.3 / 1.6 / 4.9 / 4.5 小时。袋鼠岛放不进 6 天往返。
+ * ------------------------------------------------------------------ */
+
+export const LOOP_PLACES: Place[] = [
+  { name: 'Colac VIC', label: 'Colac', lat: -38.3393, lng: 143.5847, wiki: 'Colac, Victoria', desc: '内陆去十二门徒岩的捷径，路过可休息加油。' },
+  {
+    name: 'Dimboola VIC', label: 'Dimboola', lat: -36.4535, lng: 142.0271, wiki: 'Dimboola',
+    desc: 'Wimmera 河边的小镇，回程过夜点，正好把阿德莱德到墨尔本的长途分成两半；附近有 Little Desert 国家公园。',
+  },
+];
+
+export const LOOP_NAME = '墨尔本 → 阿德莱德 → 墨尔本 6 天往返';
+
+export function createLoopTrip(): Trip {
+  const days: Day[] = [
+    day('十二门徒岩 → Warrnambool', 'Melbourne VIC', 'Warrnambool VIC', 306, 4.6,
+      ['Colac VIC', 'Twelve Apostles VIC', 'Loch Ard Gorge VIC', 'London Bridge, Port Campbell VIC'],
+      stay('Warrnambool 住宿', 220), '走内陆 Colac 直达十二门徒岩，比沿大洋路海岸绕行省 2 小时；Port Campbell 午餐。',
+      pick('Warrnambool', 'stay'), [...pick('Port Campbell', 'dining', '午餐'), ...pick('Warrnambool', 'dining', '晚餐')]),
+    day('Port Fairy · 甘比尔山蓝湖 → Robe', 'Warrnambool VIC', 'Robe SA', 329, 4.5,
+      ['Tower Hill Wildlife Reserve VIC', 'Port Fairy VIC', 'Mount Gambier SA', 'Blue Lake, Mount Gambier SA', 'Umpherston Sinkhole SA'],
+      stay('Robe 住宿', 260), '进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）；南澳时间比维州慢 30 分钟。甘比尔山午餐，12 月蓝湖最蓝。',
+      pick('Robe', 'stay'), [...pick('Mount Gambier', 'dining', '午餐'), ...pick('Robe', 'dining', '晚餐')]),
+    day('库隆 → 汉多夫 → 阿德莱德', 'Robe SA', 'Adelaide SA', 338, 4.3,
+      ['Kingston SE SA', 'Coorong National Park SA', 'Hahndorf SA'],
+      stay('Adelaide 住宿（第 1 晚）', 380), 'Kingston SE（大龙虾）或 Meningie 休息；Hahndorf 德国村晚餐后进城。',
+      pick('Adelaide', 'stay'), [...pick('Meningie', 'dining', '午餐'), ...pick('Hahndorf', 'dining', '晚餐')]),
+    day('阿德莱德：动物园 + 海滩', 'Adelaide SA', 'Adelaide SA', 59, 1.6,
+      ['Cleland Wildlife Park SA', 'Adelaide Central Market SA', 'Glenelg SA'],
+      stay('Adelaide 住宿（第 2 晚）', 380), '上午 Cleland 喂袋鼠、抱考拉（需预约时段），中午中央市场（周一、周日休市），傍晚 Glenelg 海滩看日落。',
+      pick('Adelaide', 'stay'), pick('Adelaide', 'dining')),
+    day('回程（上）→ Dimboola', 'Adelaide SA', 'Dimboola VIC', 392, 4.9,
+      ['Tailem Bend SA', 'Bordertown SA'],
+      stay('Dimboola 住宿', 180), '回程长途，Tailem Bend 和 Bordertown（白袋鼠保护区）各休息一次。进入维州后时间快 30 分钟。',
+      [], []),
+    day('回程（下）→ 回家', 'Dimboola VIC', 'Melbourne VIC', 340, 4.5,
+      ['Horsham VIC', 'Ballarat VIC'],
+      null, 'Ballarat 午餐；时间充裕可去 Sovereign Hill 淘金镇（需半天）。',
+      [], pick('Ballarat', 'dining', '午餐')),
+  ];
+
+  const expenses: Expense[] = [
+    { id: newId(), title: 'Cleland 野生动物园门票', category: 'activity', amount: 110, dayId: days[3].id, paid: false },
+    { id: newId(), title: '阿德莱德市区停车', category: 'transport', amount: 60, dayId: days[3].id, paid: false },
+    { id: newId(), title: '零食 / 饮用水 / 路上补给', category: 'food', amount: 100, dayId: null, paid: false },
+    { id: newId(), title: '出发前汽车保养检查', category: 'other', amount: 200, dayId: null, paid: false },
+  ];
+
+  const known = new Set(DEFAULT_PLACES.map((p) => p.name));
+  return {
+    version: 2,
+    id: newId(),
+    name: LOOP_NAME,
+    startDate: '2026-12-11',
+    adults: 2,
+    children: 2,
+    budget: 5000,
+    vehicle: { name: '家用 SUV', litresPer100km: 9, fuelPrice: 2.05 },
+    food: { adultPerDay: 60, childPerDay: 35 },
+    days,
+    places: [...structuredClone(DEFAULT_PLACES), ...LOOP_PLACES.filter((p) => !known.has(p.name))],
+    expenses,
+    checklist: [
+      ...genericChecklist(),
+      ...checklist('路上注意', [
+        '进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）',
+        '南澳比维州慢 30 分钟，注意入住和预约时间',
+        'Cleland 抱考拉需提前预约时段',
+      ]),
+    ],
+  };
+}

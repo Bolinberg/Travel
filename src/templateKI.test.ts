@@ -30,3 +30,19 @@ describe('6-day Kangaroo Island template', () => {
     }
   });
 });
+
+import { createLoopTrip } from './templateKI';
+
+describe('6-day round trip template', () => {
+  const t = createLoopTrip();
+  it('returns to Melbourne in 6 days within the family limits', () => {
+    expect(t.days).toHaveLength(6);
+    expect(t.days[0].from).toBe('Melbourne VIC');
+    expect(t.days[5].to).toBe('Melbourne VIC');
+    expect(t.days[5].accommodation).toBeNull();
+    expect(Math.max(...t.days.map((d) => d.driveHours))).toBeLessThanOrEqual(5);
+    expect(t.days.filter((d) => d.to === 'Adelaide SA' && d.accommodation).length).toBe(2);
+    expect(t.days.some((d) => d.stops.includes('Mount Gambier SA'))).toBe(true);
+    for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
+  });
+});
