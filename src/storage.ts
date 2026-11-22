@@ -28,11 +28,28 @@ export function loadStore(): Store | null {
   }
 }
 
-export function saveStore(store: Store): void {
+let warned = false;
+
+/** 保存全部行程。空间不足时先清掉可重新下载的缓存（路线、维基）再试，仍失败则提醒一次。 */
+export function saveStore(store: Store): boolean {
+  const data = JSON.stringify(store);
   try {
-    localStorage.setItem(KEY, JSON.stringify(store));
+    localStorage.setItem(KEY, data);
+    return true;
   } catch {
-    /* 隐私模式等情况下忽略 */
+    try {
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('route') || k.startsWith('wiki:')) localStorage.removeItem(k);
+      }
+      localStorage.setItem(KEY, data);
+      return true;
+    } catch {
+      if (!warned && typeof alert === 'function') {
+        warned = true;
+        alert('浏览器存储空间不足或不可用，最新修改可能没有保存。请到「方案」删除一些旧版本，或在「设置」导出备份。');
+      }
+      return false;
+    }
   }
 }
 

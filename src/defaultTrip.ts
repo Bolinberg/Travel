@@ -263,6 +263,7 @@ export function createBlankTrip(o: NewTripOptions): Trip {
 export function duplicateTrip(src: Trip, name: string, startDate: string): Trip {
   const t = structuredClone(src);
   t.id = newId();
+  t.versions = undefined; // 副本不带历史
   t.name = name;
   t.startDate = startDate;
   const dayIds = new Map<string, string>();

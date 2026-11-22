@@ -153,7 +153,7 @@ export async function fetchRoadRoute(
   for (const base of ENDPOINTS[profile]) {
     try {
       const r = await limited(() =>
-        fetch(`${base}${coords}?overview=full&geometries=geojson`, { signal: AbortSignal.timeout(15000) }),
+        fetch(`${base}${coords}?overview=simplified&geometries=geojson`, { signal: AbortSignal.timeout(15000) }),
       );
       if (!r.ok) continue;
       const j = await r.json();

@@ -116,4 +116,16 @@ export interface Trip {
   places: Place[];
   expenses: Expense[];
   checklist: ChecklistItem[];
+  /** 历史版本 / 备选方案 */
+  versions?: TripVersion[];
+}
+
+/** 行程的一个历史版本或备选方案（不含 versions 本身） */
+export interface TripVersion {
+  id: string;
+  label: string;
+  /** auto = 大改动前自动保存；manual = 手动保存；proposal = 未应用的备选方案 */
+  kind: 'auto' | 'manual' | 'proposal';
+  createdAt: string;
+  snapshot: Omit<Trip, 'versions'>;
 }

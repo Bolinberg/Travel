@@ -18,7 +18,16 @@ const short = (place: string) =>
 const route = (d: Day) => (d.from === d.to ? `${short(d.from)} 周边` : `${short(d.from)} → ${short(d.to)}`);
 
 /** 行程页顶部：输入目标天数 → 生成方案 → 对比 → 确认应用 */
-export default function Replan({ trip, onApply }: { trip: Trip; onApply: (t: Trip, label: string) => void }) {
+export default function Replan({
+  trip,
+  onApply,
+  onSave,
+}: {
+  trip: Trip;
+  onApply: (t: Trip, label: string) => void;
+  /** 另存为备选方案，不应用 */
+  onSave: (t: Trip, label: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState(trip.days.length);
   const [request, setRequest] = useState('');
@@ -117,6 +126,15 @@ export default function Replan({ trip, onApply }: { trip: Trip; onApply: (t: Tri
             setStatus('');
           }}
           onCancel={() => setProposal(null)}
+          onSave={(t) => {
+            const label = prompt(
+              '给这个方案起个名字',
+              `${t.days.length} 天方案（${proposal.engine === 'ai' ? 'AI' : '智能规则'}）`,
+            );
+            if (!label?.trim()) return;
+            onSave(t, label.trim());
+            setStatus(`已另存为方案「${label.trim()}」，可在「方案」页对比或采用。`);
+          }}
         />
       )}
     </section>
@@ -139,11 +157,13 @@ function Comparison({
   proposal,
   onApply,
   onCancel,
+  onSave,
 }: {
   trip: Trip;
   proposal: Proposal;
   onApply: (t: Trip) => void;
   onCancel: () => void;
+  onSave: (t: Trip) => void;
 }) {
   const after = useMemo(() => proposalTrip(trip, proposal), [trip, proposal]);
   const c = useMemo(() => compare(trip, after), [trip, after]);
@@ -246,9 +266,10 @@ function Comparison({
 
       <div className="row sticky-actions">
         <button className="primary" onClick={() => onApply(after)}>确认应用（{after.days.length} 天）</button>
+        <button onClick={() => onSave(after)}>另存为方案</button>
         <button onClick={onCancel}>放弃</button>
       </div>
-      <p className="muted small">应用后可以在行程页顶部「撤销」。</p>
+      <p className="muted small">应用前会自动保存当前版本；也可以先「另存为方案」，到「方案」页和其他方案一起对比。</p>
     </div>
   );
 }

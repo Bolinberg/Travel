@@ -8,11 +8,13 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
+import Versions from './Versions';
+import { addVersion, restoreVersion, snapshot } from './versions';
 import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
 
-type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'settings';
+type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'versions' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
 
 const TABS: { key: Tab; label: string }[] = [
@@ -21,6 +23,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'itinerary', label: '行程' },
   { key: 'costs', label: '费用' },
   { key: 'checklist', label: '清单' },
+  { key: 'versions', label: '方案' },
   { key: 'settings', label: '设置' },
 ];
 
@@ -43,7 +46,9 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
-  useEffect(() => saveStore(store), [store]);
+  useEffect(() => {
+    saveStore(store);
+  }, [store]);
 
   // 绑定当前行程 id：异步操作（如查坐标）完成时即使已切换行程，也写回原行程
   const tripId = trip.id;
@@ -70,7 +75,11 @@ export default function App() {
     setStore((s) => ({ ...s, trips: s.trips.map((t) => (t.id === next.id ? next : t)) }));
   const applyReplan = (next: Trip, label: string) => {
     setUndo({ trip, label });
-    replaceTrip(next);
+    // 大改动前自动保存旧版本
+    const withHistory = structuredClone(next);
+    withHistory.versions = structuredClone(trip.versions ?? []);
+    addVersion(withHistory, `调整天数前（${trip.days.length} 天）`, 'auto', snapshot(trip));
+    replaceTrip(withHistory);
     window.scrollTo(0, 0);
   };
   const undoReplan = () => {
@@ -145,12 +154,36 @@ export default function App() {
                 <button className="icon" aria-label="关闭" onClick={() => setUndo(null)}>×</button>
               </section>
             )}
-            <Replan key={trip.id + trip.days.length} trip={trip} onApply={applyReplan} />
+            <Replan
+              key={trip.id + trip.days.length}
+              trip={trip}
+              onApply={applyReplan}
+              onSave={(t, label) => update((d) => void addVersion(d, label, 'proposal', snapshot(t)))}
+            />
             <Itinerary trip={trip} update={update} showOnMap={showOnMap} />
           </>
         )}
         {tab === 'costs' && <Costs trip={trip} update={update} />}
         {tab === 'checklist' && <Checklist trip={trip} update={update} />}
+        {tab === 'versions' && (
+          <Versions
+            trip={trip}
+            onSave={(label) => update((d) => void addVersion(d, label, 'manual'))}
+            onRestore={(id) => {
+              setUndo(null);
+              replaceTrip(restoreVersion(trip, id));
+              setTab('overview');
+              window.scrollTo(0, 0);
+            }}
+            onRename={(id, label) =>
+              update((d) => {
+                const v = d.versions?.find((x) => x.id === id);
+                if (v) v.label = label;
+              })
+            }
+            onDelete={(id) => update((d) => void (d.versions = d.versions?.filter((x) => x.id !== id)))}
+          />
+        )}
         {tab === 'settings' && <Settings trip={trip} update={update} onImport={addTrip} />}
       </main>
     </div>
@@ -335,8 +368,9 @@ function DayCard({
       [t.days[index], t.days[j]] = [t.days[j], t.days[index]];
     });
   const remove = () => {
-    if (!confirm(`删除第 ${index + 1} 天？`)) return;
+    if (!confirm(`删除第 ${index + 1} 天？（删除前会自动保存一个版本，可在「方案」里找回）`)) return;
     update((t) => {
+      addVersion(t, `删除第 ${index + 1} 天「${day.title}」之前`, 'auto');
       t.days = t.days.filter((x) => x.id !== day.id);
       t.expenses.forEach((e) => {
         if (e.dayId === day.id) e.dayId = null;
@@ -1420,6 +1454,7 @@ function AiSettingsCard({ trip, update }: { trip: Trip; update: Update }) {
     if (!s.apiKey) return alert('请先填写 API Key');
     if (!confirm(`将为全部 ${trip.days.length} 天依次生成推荐，每天约 US$0.1–0.5（按实际用量计费）。继续？`)) return;
     setBusy(true);
+    update((t) => void addVersion(t, 'AI 批量生成前', 'auto'));
     let cost = 0;
     const snapshot = trip;
     for (let i = 0; i < snapshot.days.length; i++) {
