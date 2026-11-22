@@ -119,8 +119,12 @@ describe('route comparison A vs B from Point Cook', () => {
     const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
     const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
     expect(a.days).toHaveLength(7);
-    expect(a.days[5].to).toBe('Bordertown SA');
-    expect(a.days.filter((d) => d.to === 'Vivonne Bay SA' && d.accommodation).length).toBe(2);
+    expect(a.days[4].to).toBe('Adelaide SA'); // 第 5 天回阿德莱德住
+    expect(a.days[5].from).toBe('Adelaide SA');
+    expect(a.days[5].to).toBe('Dimboola VIC');
+    expect(a.days[6].stops).toContain('The Pinnacle Lookout, Grampians VIC');
+    expect(a.days.filter((d) => d.to === 'Vivonne Bay SA' && d.accommodation).length).toBe(1);
+    expect(Math.max(...a.days.slice(2).map((d) => d.driveHours))).toBeLessThanOrEqual(5);
     expect(b.days).toHaveLength(9);
     expect(a.days[0].from).toBe('Point Cook VIC');
     expect(a.days[0].to).toBe('Mount Gambier SA');
@@ -134,5 +138,25 @@ describe('route comparison A vs B from Point Cook', () => {
     }
     expect(summarize(a).totalKm).toBeLessThan(summarize(b).totalKm + 200);
     expect(va && vb).toBeTruthy();
+  });
+});
+
+import { upgradeComparison } from './templateKI';
+import { currentPlanId } from './versions';
+
+describe('upgrading an existing A/B comparison on a device', () => {
+  it('replaces the old A (keeping it as history) and moves a viewer of old A to the new A', () => {
+    const t = createRouteComparisonTrip();
+    // 模拟旧设备：A 是旧标签、正在看 A
+    const oldA = t.versions!.find((v) => v.label === COMPARE_A)!;
+    oldA.label = 'A：去程直达蓝湖、回程 2 天（7 天）';
+    const onOldA = { ...structuredClone(oldA.snapshot), id: t.id, name: t.name, versions: t.versions, activePlan: oldA.id };
+    const up = upgradeComparison(onOldA);
+    expect(up.versions!.some((v) => v.label === COMPARE_A && v.kind === 'proposal')).toBe(true);
+    expect(up.versions!.some((v) => v.label.endsWith('（旧版）') && v.kind === 'manual')).toBe(true);
+    expect(up.days[5].to).toBe('Dimboola VIC');
+    expect(up.versions!.find((v) => v.id === currentPlanId(up))!.label).toBe(COMPARE_A);
+    // 已经是新版就不动
+    expect(upgradeComparison(up)).toBe(up);
   });
 });

@@ -8,7 +8,7 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
-import { COMPARE_NAME, createRouteComparisonTrip } from './templateKI';
+import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -63,7 +63,7 @@ function useWide() {
 
 function initialStore(): Store {
   const s = loadStore();
-  if (s) return s;
+  if (s) return { ...s, trips: s.trips.map(upgradeComparison) };
   // 第一次打开：直接用家里确定的 7 天往返方案
   const t = createRouteComparisonTrip();
   return { activeId: t.id, trips: [t] };
@@ -195,7 +195,7 @@ export default function App() {
         <section className="offer" aria-label="新方案">
           <div>
             <b>A/B 路线对比已更新</b>
-            <p>从 Point Cook 出发。A：去程第 1 天直达蓝湖、回程 2 天中间住 Bordertown（7 天）；B：住 Port Campbell、Robe，回程走格兰扁（9 天）。在「方案」页并排看车程、费用和地图。</p>
+            <p>从 Point Cook 出发。A：第 1 天直达蓝湖，袋鼠岛住 1 晚后回阿德莱德，经 Dimboola、格兰扁回家（7 天）；B：住 Port Campbell、Robe，袋鼠岛 2 晚，回程走格兰扁（9 天）。</p>
           </div>
           <div className="row wrap">
             <button

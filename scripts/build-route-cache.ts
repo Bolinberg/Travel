@@ -15,7 +15,11 @@ const BASE = {
   bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/',
 };
 const out: Record<string, unknown> = {};
-const trips = [createDefaultTrip(), ...TEMPLATES.map((t) => t.create())];
+// 每个模板的当前内容，加上它里面存着的备选方案（例如 A/B 对比里的 A）
+const trips = [createDefaultTrip(), ...TEMPLATES.map((t) => t.create())].flatMap((t) => [
+  t,
+  ...(t.versions ?? []).map((v) => ({ ...v.snapshot, versions: [] })),
+]);
 for (const trip of trips) {
   for (const day of trip.days) {
     for (const g of groupLegs(dayLegs(trip, day))) {

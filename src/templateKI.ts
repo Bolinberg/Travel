@@ -499,14 +499,14 @@ export function createNineDayTrip(): Trip {
 
 /* ------------------------------------------------------------------
  * 路线对比（从 Point Cook 出发）：
- *   A：第 1 天大洋路一路开到甘比尔山住蓝湖，第 2 天直达阿德莱德；回程离岛后住 Bordertown，第 2 天到家（7 天）
+ *   A：第 1 天大洋路一路开到甘比尔山住蓝湖，第 2 天直达阿德莱德；袋鼠岛住 1 晚后回阿德莱德，再住 Dimboola、经格兰扁回家（7 天）
  *   B：第 1 天大洋路住 Port Campbell，第 2 天住 Robe，第 3 天到阿德莱德（9 天）
  * 两个方案作为「备选方案」放进行程的版本列表，在「方案」页并排对比。
  * 车程（OSRM，从 Point Cook）：A 7.9 / 5.4 …；B 4.4 / 5.3 / 4.3 …
  * ------------------------------------------------------------------ */
 
 export const COMPARE_NAME = 'Point Cook 出发 · A/B 路线对比';
-export const COMPARE_A = 'A：去程直达蓝湖、回程 2 天（7 天）';
+export const COMPARE_A = 'A：直达蓝湖、袋鼠岛 1 晚（7 天）';
 export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
 
 const POINT_COOK: Place = {
@@ -537,31 +537,44 @@ export function createRouteComparisonTrip(): Trip {
     '约 5.4 小时，走内陆经 Naracoorte、Keith、Tailem Bend，不经过 Robe 和库隆（走海边要 6 小时）。早上可再看一眼蓝湖；Hahndorf 德国村晚餐后进城。',
     pick('Adelaide', 'stay'), pick('Hahndorf', 'dining', '晚餐'),
   );
-  // 阿德莱德、袋鼠岛 2 晚沿用 B；回程压缩成 2 天，中间住 Bordertown
-  const rest = b.days.slice(3, 6).map(clone);
-  const a6 = day(
-    '离岛 → 渡轮 → Bordertown', 'Vivonne Bay SA', 'Bordertown SA', 451, 5.6,
-    ['Penneshaw SA', 'Cape Jervis SA', 'Tailem Bend SA'],
-    stay('Bordertown 住宿', 150),
-    '约 5.6 小时车程加渡轮（开船前 30 分钟到码头，航程 45 分钟），要订上午的船，才能天黑前到 Bordertown。镇上有白袋鼠保护区（免费）。',
-    [rec({ name: 'Bordertown Motel', where: 'Bordertown', type: '汽车旅馆（3 星）', price: '约 $70–145/晚（各平台报价不一）', note: '有游乐场和婴儿床、餐厅；房间较旧但员工友善，评分约 7.4/10' })],
-    KI_DINING.filter((r) => r.where === 'Penneshaw'),
+  // 阿德莱德 + 上袋鼠岛沿用 B；袋鼠岛只住 1 晚，第 5 天看完西部回阿德莱德住；
+  // 第 6 天一早从阿德莱德出发住 Dimboola，第 7 天经格兰扁回家
+  const [city, toKI] = b.days.slice(3, 5).map(clone);
+  toKI.accommodation = stay('袋鼠岛西南部住宿（1 晚）', 260);
+  const a5 = day(
+    '神奇岩石 · 拱门 → 渡轮回阿德莱德', 'Vivonne Bay SA', 'Adelaide SA', 320, 4.8,
+    ['Remarkable Rocks SA', 'Admirals Arch SA', 'Penneshaw SA', 'Cape Jervis SA'],
+    stay('Adelaide 住宿（第 3 晚）', 380),
+    '早上先去弗林德斯蔡斯国家公园（家庭一日票约 $38），Penneshaw 赶下午的渡轮（开船前 30 分钟到，留足余量），回大陆后直接进城休息。大风天岩石和拱门可能关闭。',
+    pick('Adelaide', 'stay'), [...KI_DINING.filter((r) => r.where === 'Penneshaw'), ...pick('Adelaide', 'dining', '晚餐')],
     { 'Cape Jervis SA': 'ferry' },
   );
-  const a7 = day(
-    'Bordertown → Ballarat → 回家', 'Bordertown SA', 'Point Cook VIC', 452, 6.0,
-    ['Horsham VIC', 'Ballarat VIC'],
-    null,
-    '约 6 小时，进入维州后时间快 30 分钟。Horsham 和 Ballarat（午餐）各休息一次。想顺路看格兰扁可从 Horsham 绕 Halls Gap，多约 0.5 小时车程（不含步道）。',
-    [], pick('Ballarat', 'dining', '午餐'),
+  const a6 = day(
+    '一早离开阿德莱德 → Dimboola', 'Adelaide SA', 'Dimboola VIC', 392, 4.9,
+    ['Tailem Bend SA', 'Bordertown SA'],
+    stay('Dimboola 住宿', 160),
+    '早上出发，约 4.9 小时。Tailem Bend 和 Bordertown（白袋鼠保护区，免费）各休息一次；进入维州后时间快 30 分钟。Dimboola 在 Wimmera 河边，营地旁有游乐场和滑板公园。',
+    [
+      rec({ name: 'Dimboola Riverside Holiday Park', where: 'Dimboola', type: '河边度假营地（两卧小屋）', price: '价格以官网为准', note: '有两卧小屋和带上下铺的小屋，旁边是游乐场；镇政府经营' }),
+      rec({ name: 'Motel Dimboola', where: 'Dimboola', type: '汽车旅馆', price: '有平台报价约 $69/晚（可能过时）', note: '在 Horsham Road 上，有洗衣服务' }),
+      rec({ name: 'Victoria Hotel Dimboola', where: 'Dimboola', type: '酒店客房', price: '价格以官网为准', note: '房间简单，有适合家庭的房型' }),
+    ],
+    [],
   );
-  const aDays = [a1, a2, ...rest, a6, a7];
-  const idMap = new Map(b.days.slice(3, 6).map((d, i) => [d.id, rest[i].id]));
+  const a7 = day(
+    '格兰扁 Pinnacle → Ballarat → 回家', 'Dimboola VIC', 'Point Cook VIC', 370, 5.0,
+    ['Horsham VIC', 'Halls Gap VIC', 'The Pinnacle Lookout, Grampians VIC', 'Ballarat VIC'],
+    null,
+    '约 5 小时车程：经 Horsham 到格兰扁 Halls Gap，上午走 Pinnacle 步道（往返约 4 km，带孩子约 2 小时），Ballarat 午餐后回家。不去格兰扁直接回家约 4.4 小时。',
+    [], [...pick('Halls Gap', 'dining'), ...pick('Ballarat', 'dining', '午餐')],
+  );
+  const aDays = [a1, a2, city, toKI, a5, a6, a7];
+  const idMap = new Map(b.days.slice(3, 5).map((d, i) => [d.id, [city, toKI][i].id]));
   const a: Trip = {
     ...structuredClone(b),
     id: b.id,
     days: aDays,
-    budget: b.budget - 700,
+    budget: b.budget - 600,
     expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? idMap.get(e.dayId) ?? null : null })),
   };
 
@@ -574,4 +587,27 @@ export function createRouteComparisonTrip(): Trip {
   b.activePlan = vb.id;
   b.name = COMPARE_NAME;
   return b;
+}
+
+/**
+ * 已经打开过 A/B 对比的设备：把旧的 A 换成最新的 A（旧 A 改成历史版本保留，不再出现在方案按钮里）。
+ * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
+ */
+export function upgradeComparison(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME || trip.versions?.some((v) => v.label === COMPARE_A)) return trip;
+  const fresh = createRouteComparisonTrip();
+  const freshA = fresh.versions!.find((v) => v.label === COMPARE_A)!;
+  const t: Trip = structuredClone(trip);
+  const oldA = t.versions?.filter((v) => v.kind === 'proposal' && v.label.startsWith('A：')) ?? [];
+  const wasActive = oldA.find((v) => v.id === t.activePlan);
+  if (wasActive) wasActive.snapshot = { ...snapshot(trip), name: wasActive.snapshot.name };
+  for (const v of oldA) {
+    v.kind = 'manual';
+    v.label = `${v.label}（旧版）`;
+  }
+  const newA = addVersion(t, COMPARE_A, 'proposal', { ...freshA.snapshot, startDate: trip.startDate });
+  if (wasActive) {
+    return { ...structuredClone(newA.snapshot), id: t.id, name: t.name, versions: t.versions, activePlan: newA.id };
+  }
+  return t;
 }
