@@ -107,3 +107,30 @@ describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () =
     expect(summarize(t).nights).toBe(8);
   });
 });
+
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B } from './templateKI';
+import { versionTrip } from './versions';
+
+describe('route comparison A vs B from Point Cook', () => {
+  const t = createRouteComparisonTrip();
+  const [va, vb] = t.versions!.slice().reverse();
+  it('holds both routes as proposals', () => {
+    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A]);
+    const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
+    const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
+    expect(a.days).toHaveLength(8);
+    expect(b.days).toHaveLength(9);
+    expect(a.days[0].from).toBe('Point Cook VIC');
+    expect(a.days[0].to).toBe('Mount Gambier SA');
+    expect(a.days[1].to).toBe('Adelaide SA');
+    expect(b.days[0].to).toBe('Port Campbell VIC');
+    expect(b.days[2].to).toBe('Adelaide SA');
+    for (const tr of [a, b]) {
+      expect(tr.days[tr.days.length - 1].to).toBe('Point Cook VIC');
+      for (const d of tr.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(tr, n), n).toBeDefined();
+      for (const e of tr.expenses) if (e.dayId) expect(tr.days.some((d) => d.id === e.dayId)).toBe(true);
+    }
+    expect(summarize(a).totalKm).toBeLessThan(summarize(b).totalKm + 200);
+    expect(va && vb).toBeTruthy();
+  });
+});

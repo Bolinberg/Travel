@@ -279,9 +279,14 @@ export function duplicateTrip(src: Trip, name: string, startDate: string): Trip 
   return t;
 }
 
-import { createGrandTrip, createKangarooIslandTrip, createLoopTrip, createNineDayTrip, createSevenDayTrip } from './templateKI';
+import { createGrandTrip, createKangarooIslandTrip, createLoopTrip, createNineDayTrip, createRouteComparisonTrip, createSevenDayTrip } from './templateKI';
 
 export const TEMPLATES = [
+  {
+    key: 'compare-ab',
+    label: 'Point Cook 出发：两条大洋路路线对比（A 第 1 天直达蓝湖 / B 住 Port Campbell、Robe）',
+    create: createRouteComparisonTrip,
+  },
   {
     key: 'mel-nine-9',
     label: '9 天往返：大洋路 → 甘比尔山 → 阿德莱德（熊猫）→ 袋鼠岛 2 晚 → 格兰扁 → 墨尔本',

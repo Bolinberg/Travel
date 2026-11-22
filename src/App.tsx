@@ -8,7 +8,7 @@ import { newId } from './id';
 import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
-import { createNineDayTrip, NINE_NAME } from './templateKI';
+import { COMPARE_NAME, createRouteComparisonTrip } from './templateKI';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -65,14 +65,14 @@ function initialStore(): Store {
   const s = loadStore();
   if (s) return s;
   // 第一次打开：直接用家里确定的 7 天往返方案
-  const t = createNineDayTrip();
+  const t = createRouteComparisonTrip();
   return { activeId: t.id, trips: [t] };
 }
 
 /* 已经用过旧版本的设备：提示一次新的 6 天方案 */
 // 家里最终选定的方案：9 天（袋鼠岛 2 晚、回程走格兰扁）
-const KI_OFFER_KEY = 'travel-planner.offer.nine9-gor';
-const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === NINE_NAME;
+const KI_OFFER_KEY = 'travel-planner.offer.compare-ab';
+const hasKiTrip = (s: Store) => s.trips.find((t) => t.id === s.activeId)?.name === COMPARE_NAME;
 function offerDismissed(): boolean {
   try {
     return localStorage.getItem(KI_OFFER_KEY) === 'dismissed';
@@ -194,26 +194,28 @@ export default function App() {
       {kiOffer && !hasKiTrip(store) && (
         <section className="offer" aria-label="新方案">
           <div>
-            <b>9 天方案已更新：第 1 天走大洋路全程</b>
-            <p>Torquay → Lorne → Apollo Bay → 十二门徒岩看日落，住 Port Campbell；之后甘比尔山 → 阿德莱德（熊猫）→ 袋鼠岛住 2 晚 → 格兰扁回家。其他方案都保留在「我的行程」里。</p>
+            <b>两条大洋路路线的对比已经准备好</b>
+            <p>从 Point Cook 出发。A：第 1 天一路开到蓝湖，第 2 天到阿德莱德（8 天）；B：住 Port Campbell 和 Robe，第 3 天到阿德莱德（9 天）。在「方案」页并排看车程、费用和地图。</p>
           </div>
           <div className="row wrap">
             <button
               className="primary"
               onClick={() => {
                 // 已经有 8 天方案就直接切过去，不重复创建
-                const existing = store.trips.find((x) => x.name === NINE_NAME);
+                const existing = store.trips.find((x) => x.name === COMPARE_NAME);
                 if (existing) {
                   switchTrip(existing.id);
                 } else {
-                  const t = createNineDayTrip();
+                  const t = createRouteComparisonTrip();
                   t.startDate = trip.startDate; // 沿用你已经定好的出发日期
+                  for (const v of t.versions ?? []) v.snapshot.startDate = trip.startDate;
                   addTrip(t);
                 }
+                setTab('versions');
                 window.scrollTo(0, 0);
               }}
             >
-              切换到 9 天方案
+              打开路线对比
             </button>
             <button
               onClick={() => {

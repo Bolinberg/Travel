@@ -3,6 +3,7 @@ import { newId } from './id';
 import { DEFAULT_PLACES } from './places';
 import { GUIDES } from './guides';
 import { genericChecklist } from './defaultTrip';
+import { addVersion, snapshot } from './versions';
 
 /*
  * 6 天方案：墨尔本 → 大洋路 → Port Fairy → 甘比尔山 → Robe → 库隆 → 阿德莱德 → 袋鼠岛 → 阿德莱德
@@ -494,4 +495,65 @@ export function createNineDayTrip(): Trip {
   for (const p of extra) if (!places.some((x) => x.name === p.name)) places.push(p);
 
   return { ...grand, id: newId(), name: NINE_NAME, budget: 7500, days, expenses, places };
+}
+
+/* ------------------------------------------------------------------
+ * 路线对比（从 Point Cook 出发）：
+ *   A：第 1 天大洋路一路开到甘比尔山住蓝湖，第 2 天直达阿德莱德（8 天）
+ *   B：第 1 天大洋路住 Port Campbell，第 2 天住 Robe，第 3 天到阿德莱德（9 天）
+ * 两个方案作为「备选方案」放进行程的版本列表，在「方案」页并排对比。
+ * 车程（OSRM，从 Point Cook）：A 7.9 / 5.4 …；B 4.4 / 5.3 / 4.3 …
+ * ------------------------------------------------------------------ */
+
+export const COMPARE_NAME = 'Point Cook 出发 · 两条大洋路路线对比';
+export const COMPARE_A = 'A：第 1 天直达蓝湖（8 天）';
+export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
+
+const POINT_COOK: Place = {
+  name: 'Point Cook VIC', label: 'Point Cook（家）', lat: -37.9148, lng: 144.7509, wiki: 'Point Cook, Victoria',
+  desc: '出发和回家的地方。',
+};
+
+export function createRouteComparisonTrip(): Trip {
+  const b = createNineDayTrip();
+  b.places = [...b.places.filter((p) => p.name !== POINT_COOK.name), POINT_COOK];
+  Object.assign(b.days[0], { from: 'Point Cook VIC', km: 272, driveHours: 4.4 });
+  Object.assign(b.days[8], { to: 'Point Cook VIC', km: 267, driveHours: 3.5 });
+
+  const clone = (d: Day): Day => ({ ...structuredClone(d), id: newId() });
+  const a1 = day(
+    '大洋路一路开到甘比尔山 · 住蓝湖', 'Point Cook VIC', 'Mount Gambier SA', 525, 7.9,
+    ['Torquay VIC', 'Bells Beach VIC', 'Split Point Lighthouse, Aireys Inlet VIC', 'Lorne VIC', 'Apollo Bay VIC',
+      'Twelve Apostles VIC', 'Loch Ard Gorge VIC', 'London Bridge, Port Campbell VIC', 'Warrnambool VIC', 'Port Fairy VIC',
+      'Blue Lake, Mount Gambier SA'],
+    stay('Mount Gambier 住宿（蓝湖边）', 200),
+    '纯开车约 7.9 小时，加上停 Torquay、Lorne、十二门徒岩和午餐，实际在路上 10–11 小时；7 点出发，大约当地时间傍晚 6:30–7:30 到（南澳慢 30 分钟）。Port Fairy 之后正是黄昏，注意路上的袋鼠。想早点到可以少停 Bells Beach 和 Split Point。进入南澳前处理掉新鲜水果蔬菜。',
+    pick('Mount Gambier', 'stay'), [...pick('Lorne', 'dining', '午餐'), ...pick('Mount Gambier', 'dining', '晚餐')],
+  );
+  const a2 = day(
+    '蓝湖 → 汉多夫 → 阿德莱德', 'Mount Gambier SA', 'Adelaide SA', 437, 5.4,
+    ['Hahndorf SA'],
+    stay('Adelaide 住宿（第 1 晚）', 380),
+    '约 5.4 小时，走内陆经 Naracoorte、Keith、Tailem Bend，不经过 Robe 和库隆（走海边要 6 小时）。早上可再看一眼蓝湖；Hahndorf 德国村晚餐后进城。',
+    pick('Adelaide', 'stay'), pick('Hahndorf', 'dining', '晚餐'),
+  );
+  const rest = b.days.slice(3).map(clone);
+  const aDays = [a1, a2, ...rest];
+  const idMap = new Map(b.days.slice(3).map((d, i) => [d.id, rest[i].id]));
+  const a: Trip = {
+    ...structuredClone(b),
+    id: b.id,
+    days: aDays,
+    budget: b.budget - 300,
+    expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? idMap.get(e.dayId) ?? null : null })),
+  };
+
+  const snapA = snapshot(a);
+  const snapB = snapshot(b);
+  b.versions = [];
+  // 列表里新的在上：先加 B 再加 A，对比表里 A 在左、B 在右
+  addVersion(b, COMPARE_B, 'proposal', snapB);
+  addVersion(b, COMPARE_A, 'proposal', snapA);
+  b.name = COMPARE_NAME;
+  return b;
 }

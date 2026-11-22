@@ -36,8 +36,10 @@ export default function Versions({
   onDelete: (id: string) => void;
 }) {
   const versions = [...(trip.versions ?? [])].reverse(); // 新的在上
-  const [selected, setSelected] = useState<string[]>(['current']);
-  const [comparing, setComparing] = useState(false);
+  // 有备选方案（例如路线对比）时，默认选中它们并直接打开对比
+  const proposals = versions.filter((v) => v.kind === 'proposal').map((v) => v.id).slice(0, 4).reverse();
+  const [selected, setSelected] = useState<string[]>(proposals.length >= 2 ? proposals : ['current']);
+  const [comparing, setComparing] = useState(proposals.length >= 2);
 
   const schemes: Scheme[] = useMemo(
     () => [
