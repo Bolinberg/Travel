@@ -53,3 +53,8 @@ export function daysUntil(iso: string, now = new Date()): number {
 
 /** 开销标题去掉括号里的说明，用在列表和提醒里 */
 export const shortTitle = (t: string) => t.replace(/\s*[（(].*$/, '').trim() || t;
+
+/** 小孩年龄（平台搜索要用）；没填时按 8 岁 */
+export function childAges(trip: { children: number; childAges?: number[] }): number[] {
+  return Array.from({ length: trip.children }, (_, i) => trip.childAges?.[i] ?? 8);
+}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Category, Day, Expense, Rec, Trip } from './types';
 import { CATEGORY_LABELS } from './types';
-import { addDays, formatDate, money, summarize } from './calc';
+import { addDays, dayCosts, foodStandard, formatDate, money, pickedDiningCost, summarize } from './calc';
 import { links } from './geo';
 import { newId } from './id';
 import { STAYS_CHECKED } from './stays';
@@ -82,6 +82,9 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
   const stayDone = groups.filter((g) => g.days.every((i) => trip.days[i].accommodation?.booked)).length;
   const ticketDone = bookable.filter((e) => e.booked || e.paid).length;
   const totalItems = groups.length + bookable.length;
+  const meals = trip.days.flatMap((d, i) => d.dining.filter((r) => r.picked).map((r) => ({ r, i })));
+  const perDay = dayCosts(trip);
+  const undated = trip.expenses.filter((e) => !e.dayId || !trip.days.some((d) => d.id === e.dayId)).reduce((n, e) => n + (e.amount || 0), 0);
   const doneItems = stayDone + ticketDone;
 
   const setExpense = (id: string, mutate: (e: Expense) => void) =>
@@ -125,6 +128,79 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
         <AddExpense trip={trip} update={update} categories={BOOKABLE} placeholder="新增要订的项目，如：熊猫幕后体验" />
       </section>
 
+      <section className="bk-sec" aria-labelledby="bk-food">
+        <div className="bk-sec-head">
+          <h2 id="bk-food">餐厅</h2>
+          <span className="muted small">已选 {meals.length} 家</span>
+        </div>
+        {meals.length ? (
+          <ul className="plain bk-list">
+            {meals.map(({ r, i }) => (
+              <li key={r.id} className="bk-row auto">
+                <div className="bk-main">
+                  <b className="bk-title">{r.name}</b>
+                  <div className="muted small">
+                    第 {i + 1} 天 · {formatDate(addDays(trip.startDate, i))} · {short(trip.days[i].to)}
+                    {r.rating ? ` · ★ ${r.rating}` : ''}
+                  </div>
+                  {(r.bookingUrl || r.url) && (
+                    <a className="link small" href={r.bookingUrl || r.url} target="_blank" rel="noreferrer">打开链接 ↗</a>
+                  )}
+                </div>
+                <span className="bk-amt">{r.cost ? money(r.cost) : <span className="muted small">未填价格</span>}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted small">还没选餐厅。在「行程」里点某一天 →「吃饭」，按评分找到喜欢的餐厅后粘贴链接加入。</p>
+        )}
+      </section>
+
+      <section className="bk-sec" aria-labelledby="bk-days">
+        <div className="bk-sec-head">
+          <h2 id="bk-days">按天花费</h2>
+        </div>
+        <div className="table-scroll bk-days">
+          <table>
+            <thead>
+              <tr>
+                <th>天</th>
+                <th>住宿</th>
+                <th>餐饮</th>
+                <th>油费</th>
+                <th>门票等</th>
+                <th>合计</th>
+              </tr>
+            </thead>
+            <tbody>
+              {perDay.map((c, i) => (
+                <tr key={trip.days[i].id}>
+                  <th>
+                    第 {i + 1} 天 <span className="muted small">{short(trip.days[i].to)}</span>
+                  </th>
+                  <td>{c.stay ? money(c.stay) : '—'}</td>
+                  <td className={pickedDiningCost(trip.days[i]) > foodStandard(trip) ? 'hl' : ''}>{money(c.food)}</td>
+                  <td>{c.fuel ? money(c.fuel) : '—'}</td>
+                  <td>{c.extras ? money(c.extras) : '—'}</td>
+                  <td>
+                    <b>{money(c.total)}</b>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>不分日期</th>
+                <td colSpan={4} className="muted small">没指定日期的开销</td>
+                <td>
+                  <b>{money(undated)}</b>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
       <section className="bk-sec" aria-labelledby="bk-other">
         <div className="bk-sec-head">
           <h2 id="bk-other">其他开销</h2>
@@ -141,12 +217,12 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
           </li>
           <li className="bk-row auto">
             <div className="bk-main">
-              <b>每天吃饭（自动估算）</b>
+              <b>餐饮</b>
               <div className="muted small">
-                ({trip.adults}×${trip.food.adultPerDay} + {trip.children}×${trip.food.childPerDay}) × {s.days} 天，可在设置里改
+                每天按标准 {money(foodStandard(trip))}（{trip.adults}×${trip.food.adultPerDay} + {trip.children}×${trip.food.childPerDay}，可在设置里改）；已选餐厅合计更高的那天按餐厅算
               </div>
             </div>
-            <span className="bk-amt">{money((trip.food.adultPerDay * trip.adults + trip.food.childPerDay * trip.children) * s.days)}</span>
+            <span className="bk-amt">{money(s.byCategory.food)}</span>
           </li>
           {others.map((e) => (
             <ExpenseRow key={e.id} trip={trip} e={e} set={(m) => setExpense(e.id, m)} update={update} />

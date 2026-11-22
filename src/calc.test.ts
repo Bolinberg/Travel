@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, fuelCost, summarize } from './calc';
+import { addDays, dayFood, foodStandard, fuelCost, summarize } from './calc';
 import { createDefaultTrip } from './defaultTrip';
 
 describe('calc', () => {
@@ -113,5 +113,18 @@ describe('generic trips', () => {
     const linked = t.expenses.find((e) => e.dayId);
     expect(t.days.some((d) => d.id === linked!.dayId)).toBe(true);
     expect(src.days[0].accommodation!.booked).toBe(true);
+  });
+});
+
+describe('餐饮不重复算', () => {
+  it('当天取每日标准和已选餐厅合计中较大的', () => {
+    const t = createDefaultTrip();
+    const d = t.days[0];
+    d.dining = [{ id: 'a', name: 'X', where: '', type: '', price: '', note: '', picked: true, cost: 50 }];
+    expect(dayFood(t, d)).toBe(foodStandard(t));
+    d.dining[0].cost = 500;
+    expect(dayFood(t, d)).toBe(500);
+    d.dining[0].picked = false;
+    expect(dayFood(t, d)).toBe(foodStandard(t));
   });
 });

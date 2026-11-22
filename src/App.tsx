@@ -11,7 +11,8 @@ import { AskBar, PlansPage } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import { applyVerifiedStays } from './stays';
 import Bookings, { BOOKABLE, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
-import { daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
+import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
+import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks, type SearchLink } from './search';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -104,7 +105,25 @@ export default function App() {
     history.replaceState(null, '', location.pathname + location.search);
   };
   /** 正在看的那一天（手机：底部面板；宽屏：时间线里展开，旁边地图聚焦） */
-  const [openDay, setOpenDay] = useState<number | null>(null);
+  const [openDay, setOpenDayRaw] = useState<number | null>(null);
+  const [dayTab, setDayTab] = useState<DayTab>('plan');
+  const setOpenDay = (i: number | null, tab: DayTab = 'plan') => {
+    setDayTab(tab);
+    setOpenDayRaw(i);
+  };
+  const onFlow = (step: FlowStep) => {
+    if (step === 'cost') return goTo('bookings');
+    if (step === 'route') {
+      const i = trip.days.findIndex((d) => !d.from.trim() || !d.to.trim());
+      return setOpenDay(i >= 0 ? i : 0, 'plan');
+    }
+    if (step === 'stays') {
+      const g = stayGroups(trip).find((x) => stayLabel(trip.days[x.days[0]]) === '还没选住宿') ?? stayGroups(trip)[0];
+      return g ? setOpenDay(g.days[0], 'stays') : undefined;
+    }
+    const i = trip.days.findIndex((d) => !d.dining.some((r) => r.picked));
+    setOpenDay(i >= 0 ? i : 0, 'dining');
+  };
   const [mapOpen, setMapOpen] = useState(false);
   const [mapFocus, setMapFocus] = useState<number | null>(null);
   const [askOpen, setAskOpen] = useState(false);
@@ -302,6 +321,7 @@ export default function App() {
           )}
           {tab === 'itinerary' && (
             <>
+              <PlanFlow trip={trip} onStep={onFlow} />
               <NextSteps trip={trip} goTo={goTo} />
               <MissingBanner trip={trip} update={update} />
               {!wide && (
@@ -316,12 +336,12 @@ export default function App() {
                 trip={trip}
                 update={update}
                 open={openDay}
-                onOpen={setOpenDay}
+                onOpen={(i) => setOpenDay(i)}
                 inline={
                   wide
                     ? (i) => (
                         <div className="tl-inline">
-                          <DayDetail key={trip.days[i].id} trip={trip} index={i} update={update} onMap={() => openMap(i)} goTo={goTo} />
+                          <DayDetail key={trip.days[i].id + dayTab} trip={trip} index={i} update={update} onMap={() => openMap(i)} goTo={goTo} initialTab={dayTab} />
                         </div>
                       )
                     : undefined
@@ -413,7 +433,7 @@ export default function App() {
         </div>
       )}
       {!wide && tab === 'itinerary' && openDay !== null && (
-        <DaySheet trip={trip} index={openDay} update={update} setIndex={setOpenDay} onMap={() => openMap(openDay)} goTo={goTo} />
+        <DaySheet trip={trip} index={openDay} update={update} setIndex={(i) => setOpenDay(i, dayTab)} onMap={() => openMap(openDay)} goTo={goTo} initialTab={dayTab} />
       )}
       {mapOpen && (
         <MapOverlay
@@ -456,6 +476,36 @@ function countdown(trip: Trip): string {
   if (n === 0) return '今天出发';
   if (-n < trip.days.length) return `旅途第 ${-n + 1} 天`;
   return '旅行已结束';
+}
+
+type FlowStep = 'route' | 'stays' | 'dining' | 'cost';
+
+/** 规划流程：① 每天去哪 → ② 住哪 → ③ 吃什么 → ④ 花多少 */
+function PlanFlow({ trip, onStep }: { trip: Trip; onStep: (s: FlowStep) => void }) {
+  const groups = stayGroups(trip);
+  const routed = trip.days.filter((d) => d.from.trim() && d.to.trim()).length;
+  const chosen = groups.filter((g) => stayLabel(trip.days[g.days[0]]) !== '还没选住宿').length;
+  const meals = trip.days.reduce((n, d) => n + d.dining.filter((r) => r.picked).length, 0);
+  const total = summarize(trip).total;
+  const steps: { k: FlowStep; label: string; value: string; done: boolean }[] = [
+    { k: 'route', label: '每天去哪', value: `${routed}/${trip.days.length} 天已定`, done: routed === trip.days.length },
+    { k: 'stays', label: '住哪', value: groups.length ? `已选 ${chosen}/${groups.length} 处` : '不住宿', done: chosen === groups.length },
+    { k: 'dining', label: '吃什么', value: meals ? `已选 ${meals} 家` : '还没选', done: meals > 0 },
+    { k: 'cost', label: '花多少', value: money(total), done: false },
+  ];
+  return (
+    <nav className="flow" aria-label="规划步骤">
+      {steps.map((st, i) => (
+        <button key={st.k} className={`flow-step${st.done ? ' done' : ''}`} onClick={() => onStep(st.k)}>
+          <span className="flow-n" aria-hidden="true">{st.done ? '✓' : i + 1}</span>
+          <span className="flow-text">
+            <b>{st.label}</b>
+            <span>{st.value}</span>
+          </span>
+        </button>
+      ))}
+    </nav>
+  );
 }
 
 /** 行程页顶部：倒计时 + 最要紧的 3 件事 */
@@ -609,6 +659,7 @@ function DayDetail({
   onMap,
   onClose,
   goTo,
+  initialTab = 'plan',
 }: {
   trip: Trip;
   index: number;
@@ -616,9 +667,10 @@ function DayDetail({
   onMap: () => void;
   onClose?: () => void;
   goTo: (t: Tab) => void;
+  initialTab?: DayTab;
 }) {
   const day = trip.days[index];
-  const [tab, setTab] = useState<DayTab>('plan');
+  const [tab, setTab] = useState<DayTab>(initialTab === 'stays' && !day.accommodation ? 'plan' : initialTab);
   const [editing, setEditing] = useState(false);
   const set = (mutate: (d: Day) => void) =>
     update((t) => {
@@ -898,6 +950,7 @@ function DaySheet({
   setIndex,
   onMap,
   goTo,
+  initialTab,
 }: {
   trip: Trip;
   index: number;
@@ -905,6 +958,7 @@ function DaySheet({
   setIndex: (i: number | null) => void;
   onMap: () => void;
   goTo: (t: Tab) => void;
+  initialTab?: DayTab;
 }) {
   const close = () => setIndex(null);
   useEffect(() => {
@@ -921,7 +975,7 @@ function DaySheet({
     <div className="sheet day-sheet" role="dialog" aria-modal="true" aria-label={`第 ${index + 1} 天`} onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="sheet-inner">
         <div className="grab" aria-hidden="true" />
-        <DayDetail key={trip.days[index].id} trip={trip} index={index} update={update} onMap={onMap} onClose={close} goTo={goTo} />
+        <DayDetail key={trip.days[index].id + (initialTab ?? '')} trip={trip} index={index} update={update} onMap={onMap} onClose={close} goTo={goTo} initialTab={initialTab} />
         <div className="dd-nav">
           {index > 0 ? <button onClick={() => setIndex(index - 1)}>← 第 {index} 天</button> : <span />}
           {index < trip.days.length - 1 ? <button onClick={() => setIndex(index + 1)}>第 {index + 2} 天 →</button> : <span />}
@@ -1298,6 +1352,7 @@ function DayGuide({
   only?: 'sights' | 'stays' | 'dining';
 }) {
   const show = (k: 'sights' | 'stays' | 'dining') => !only || only === k;
+  const group = stayGroups(trip).find((g) => g.days.includes(index))?.days ?? [index];
   const sights = dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from);
   const town = short(day.to);
   const checkin = addDays(trip.startDate, index);
@@ -1324,51 +1379,45 @@ function DayGuide({
 
       {show('stays') && day.accommodation && (
         <RecSection
-          title="🏨 住宿推荐"
+          title="住哪"
+          step={`${short(day.to)} · ${formatDate(checkin)} 入住${group.length > 1 ? `，连住 ${group.length} 晚` : ''}。选定的住宿会按每晚价格计入花费，在「预订」页跟踪订没订。`}
           recs={day.stayOptions}
-          pickLabel={['选这家', '已选']}
-          more={[
-            { label: 'Booking 搜索', href: links.booking(day.to, checkin, addDays(checkin, 1), trip.adults) },
-            { label: 'Tripadvisor 酒店', href: links.tripadvisor(`hotels ${town}`) },
-          ]}
-          onPick={
+          pickLabel={['选这家', '已选 ✓']}
+          search={staySearchLinks({ place: day.to, checkin, checkout: addDays(checkin, group.length), adults: trip.adults, childAges: childAges(trip) })}
+          onPick={update && ((r) => update((t) => pickStay(t, group, r)))}
+          onRemove={update && ((r) => update((t) => group.forEach((i) => void (t.days[i].stayOptions = t.days[i].stayOptions.filter((x) => x.name !== r.name)))))}
+          onAdd={
             update &&
-            ((r) =>
-              setRecs('stayOptions', (list, d) => {
-                const picked = !r.picked;
-                list.forEach((x) => (x.picked = picked && x.id === r.id));
-                if (picked && d.accommodation) {
-                  d.accommodation.name = r.name;
-                  if (r.cost) d.accommodation.cost = r.cost;
-                  const link = r.url || r.bookingUrl;
-                  if (link && !d.accommodation.notes.includes(link)) {
-                    d.accommodation.notes = [d.accommodation.notes, `预订：${link}`].filter(Boolean).join('\n');
-                  }
-                }
+            ((r, pick) =>
+              update((t) => {
+                for (const i of group) t.days[i].stayOptions.push({ ...r, id: newId() });
+                if (pick) pickStay(t, group, r);
               }))
           }
-          onRemove={update && ((r) => setRecs('stayOptions', (_, d) => void (d.stayOptions = d.stayOptions.filter((x) => x.id !== r.id))))}
-          onAdd={update && ((r) => setRecs('stayOptions', (list) => void list.push(r)))}
           defaultWhere={town}
+          costUnit="每晚"
+          defaultType="住宿"
         />
       )}
 
-      {show('dining') && <RecSection
-        title="🍽 餐饮推荐"
-        recs={day.dining}
-        pickLabel={['想去', '想去 ✓']}
-        more={[
-          { label: 'Tripadvisor 餐厅', href: links.tripadvisor(`restaurants ${town}`) },
-          { label: 'Google 附近餐厅', href: links.googleMaps(`restaurants ${day.to}`) },
-        ]}
-        onPick={update && ((r) => setRecs('dining', (list) => {
-          const x = list.find((y) => y.id === r.id);
-          if (x) x.picked = !x.picked;
-        }))}
-        onRemove={update && ((r) => setRecs('dining', (_, d) => void (d.dining = d.dining.filter((x) => x.id !== r.id))))}
-        onAdd={update && ((r) => setRecs('dining', (list) => void list.push(r)))}
-        defaultWhere={town}
-      />}
+      {show('dining') && (
+        <RecSection
+          title="吃什么"
+          step="点「想去」加入这天的安排；填了价格的餐厅计入花费（当天餐饮取每日标准和已选餐厅合计中较大的那个，不会重复算）。"
+          recs={day.dining}
+          pickLabel={['想去', '想去 ✓']}
+          search={diningSearchLinks(day.to, checkin, trip.adults + trip.children)}
+          onPick={update && ((r) => setRecs('dining', (list) => {
+            const x = list.find((y) => y.id === r.id);
+            if (x) x.picked = !x.picked;
+          }))}
+          onRemove={update && ((r) => setRecs('dining', (_, d) => void (d.dining = d.dining.filter((x) => x.id !== r.id))))}
+          onAdd={update && ((r, pick) => setRecs('dining', (list) => void list.push({ ...r, picked: pick })))}
+          defaultWhere={town}
+          costUnit="这顿合计"
+          defaultType="餐厅"
+        />
+      )}
     </div>
   );
 }
@@ -1440,93 +1489,189 @@ function PlaceCard({ place }: { place: Place }) {
 
 function RecSection({
   title,
+  step,
   recs,
   pickLabel,
-  more,
+  search,
   onPick,
   onRemove,
   onAdd,
   defaultWhere,
+  costUnit,
+  defaultType,
 }: {
   title: string;
+  /** 这一步在流程里做什么 */
+  step: string;
   recs: Rec[];
   pickLabel: [string, string];
-  more: { label: string; href: string }[];
+  search: SearchLink[];
   onPick?: (r: Rec) => void;
   onRemove?: (r: Rec) => void;
-  onAdd?: (r: Rec) => void;
+  /** pick = 加入后直接选定（计入花费） */
+  onAdd?: (r: Rec, pick: boolean) => void;
   defaultWhere: string;
+  /** 价格单位：「每晚」或「这顿合计」 */
+  costUnit: string;
+  defaultType: string;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: '', type: '', price: '', note: '' });
+  return (
+    <section className="rec-sec">
+      <h3>{title}</h3>
+      <p className="muted small rec-step">{step}</p>
+
+      <div className="find">
+        <div className="find-head">① 去平台按评分找</div>
+        <div className="find-links">
+          {search.map((l) => (
+            <a key={l.key} className="find-link" href={l.href} target="_blank" rel="noreferrer">
+              <b>{l.label} ↗</b>
+              <span>{l.hint}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {onAdd && <AddFromLink onAdd={onAdd} defaultWhere={defaultWhere} costUnit={costUnit} defaultType={defaultType} />}
+
+      <div className="find-head">③ 候选（{recs.length}）</div>
+      {recs.length === 0 && <p className="muted small">还没有候选。用上面的链接找到喜欢的，把链接粘贴进来。</p>}
+      <ul className="plain recs">
+        {recs.map((r) => {
+          const link = r.bookingUrl || r.url;
+          return (
+            <li key={r.id} className={r.picked ? 'picked' : ''}>
+              <div className="row between">
+                <b>
+                  {r.name} {r.top && <span className="tag top">推荐</span>}
+                </b>
+                <span className="muted small nowrap">{r.cost ? `${money(r.cost)}${costUnit === '每晚' ? '/晚' : ''}` : r.price}</span>
+              </div>
+              <div className="muted small">
+                {r.type}
+                {r.where && r.where !== defaultWhere ? ` · ${r.where}` : ''}
+                {r.cost && r.price && !/^\$?[\d,.]+$/.test(r.price) ? ` · ${r.price}` : ''}
+              </div>
+              {r.rating && <div className="small rating">★ {r.rating}</div>}
+              {r.note && <p className="small">{r.note}</p>}
+              <div className="row wrap gap small">
+                {r.url && r.url !== link && <a className="link strong" href={r.url} target="_blank" rel="noreferrer">官网 ↗</a>}
+                {link && (
+                  <a className="link strong" href={link} target="_blank" rel="noreferrer">{platformOf(link)} ↗</a>
+                )}
+                {!link && <a className="link" href={links.tripadvisor(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">Tripadvisor</a>}
+                <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
+                <span className="spacer" />
+                {onPick && (
+                  <button className={r.picked ? 'mini on' : 'mini'} onClick={() => onPick(r)}>
+                    {r.picked ? pickLabel[1] : pickLabel[0]}
+                  </button>
+                )}
+                {onRemove && (
+                  <button className="icon" aria-label={`删除 ${r.name}`} onClick={() => onRemove(r)}>×</button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** 「② 粘贴链接加入行程」：从平台复制链接（或分享出来的整段文字）粘贴进来，自动认出平台和名字 */
+function AddFromLink({
+  onAdd,
+  defaultWhere,
+  costUnit,
+  defaultType,
+}: {
+  onAdd: (r: Rec, pick: boolean) => void;
+  defaultWhere: string;
+  costUnit: string;
+  defaultType: string;
+}) {
+  const empty = { text: '', name: '', cost: 0, rating: '', note: '', pick: true };
+  const [d, setD] = useState(empty);
+  const [open, setOpen] = useState(false);
+  const { url, title } = extractUrl(d.text);
+  const guessed = url ? nameFromUrl(url) : '';
+  const name = d.name || guessed || title.slice(0, 60);
+  const take = (text: string) => setD((x) => ({ ...x, text }));
+  const pasteFromClipboard = async () => {
+    try {
+      take(await navigator.clipboard.readText());
+    } catch {
+      /* 不允许读剪贴板时，直接在输入框里粘贴 */
+    }
+  };
   const save = () => {
-    if (!draft.name.trim() || !onAdd) return;
-    const cost = Number(draft.price.replace(/[^\d.]/g, '')) || undefined;
-    onAdd({ id: newId(), where: defaultWhere, picked: false, cost, ...draft, name: draft.name.trim() });
-    setDraft({ name: '', type: '', price: '', note: '' });
-    setAdding(false);
+    if (!name.trim() && !url) return;
+    const platformLink = url && platformOf(url) !== '官网';
+    onAdd(
+      {
+        id: newId(),
+        name: name.trim() || platformOf(url),
+        where: defaultWhere,
+        type: url ? `${defaultType} · 来自 ${platformOf(url)}` : defaultType,
+        price: d.cost ? `$${d.cost}${costUnit === '每晚' ? '/晚' : ''}` : '价格待定',
+        cost: d.cost || undefined,
+        note: d.note.trim(),
+        picked: false,
+        ...(d.rating.trim() ? { rating: d.rating.trim() } : {}),
+        ...(url ? (platformLink ? { bookingUrl: url } : { url }) : {}),
+      },
+      d.pick,
+    );
+    setD(empty);
+    setOpen(false);
   };
 
+  if (!open) {
+    return (
+      <button className="add-line" onClick={() => setOpen(true)}>
+        ② 找到喜欢的？粘贴链接加入行程
+      </button>
+    );
+  }
   return (
-    <>
-      <h3>{title}</h3>
-      {recs.length === 0 && <p className="muted small">暂无推荐，可用下方链接搜索后自己添加。</p>}
-      <ul className="plain recs">
-        {recs.map((r) => (
-          <li key={r.id} className={r.picked ? 'picked' : ''}>
-            <div className="row between">
-              <b>{r.name}</b>
-              <span className="muted small nowrap">{r.price}</span>
-            </div>
-            <div className="muted small">
-              {r.type}
-              {r.where && r.where !== defaultWhere ? ` · ${r.where}` : ''}
-            </div>
-            {r.rating && <div className="small rating">★ {r.rating}</div>}
-            {r.note && <p className="small">{r.note}</p>}
-            <div className="row wrap gap small">
-              {r.url && <a className="link strong" href={r.url} target="_blank" rel="noreferrer">官网预订 ↗</a>}
-              {r.bookingUrl && (
-                <a className="link strong" href={r.bookingUrl} target="_blank" rel="noreferrer">
-                  {/wotif/i.test(r.bookingUrl) ? 'Wotif' : /expedia/i.test(r.bookingUrl) ? 'Expedia' : /airbnb/i.test(r.bookingUrl) ? 'Airbnb' : 'Booking.com'} ↗
-                </a>
-              )}
-              <a className="link" href={links.tripadvisor(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">Tripadvisor</a>
-              <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
-              <span className="spacer" />
-              {onPick && (
-                <button className={r.picked ? 'mini on' : 'mini'} onClick={() => onPick(r)}>
-                  {r.picked ? pickLabel[1] : pickLabel[0]}
-                </button>
-              )}
-              {onRemove && (
-                <button className="icon" aria-label="删除" onClick={() => onRemove(r)}>×</button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div className="row wrap gap small more">
-        {more.map((m) => (
-          <a key={m.label} className="link" href={m.href} target="_blank" rel="noreferrer">{m.label} ↗</a>
-        ))}
-        {onAdd && !adding && <button className="link" onClick={() => setAdding(true)}>+ 自己添加</button>}
+    <div className="form add add-link">
+      <div className="find-head">② 粘贴链接加入行程</div>
+      <div className="row">
+        <input
+          className="grow"
+          autoFocus
+          inputMode="url"
+          placeholder="粘贴 Booking / Airbnb / Tripadvisor / Google 地图 链接"
+          value={d.text}
+          onChange={(e) => take(e.target.value)}
+        />
+        <button type="button" onClick={pasteFromClipboard}>粘贴</button>
       </div>
-      {adding && (
-        <div className="form add">
-          <input placeholder="名称" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <div className="grid2">
-            <input placeholder="类型（如 汽车旅馆 / 海鲜）" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} />
-            <input placeholder="价格（如 $220 或 $$）" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
-          </div>
-          <input placeholder="备注" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
-          <div className="row">
-            <button className="primary" onClick={save}>保存</button>
-            <button onClick={() => setAdding(false)}>取消</button>
-          </div>
-        </div>
-      )}
-    </>
+      {url && <p className="muted small">认出来是 {platformOf(url)}{guessed ? `：${guessed}` : '，名字请自己填一下'}</p>}
+      <div className="grid2">
+        <Field label="名称">
+          <input value={name} placeholder="名称" onChange={(e) => setD({ ...d, name: e.target.value })} />
+        </Field>
+        <Field label={`价格（AUD，${costUnit}）`}>
+          <NumInput value={d.cost} onChange={(v) => setD({ ...d, cost: v })} />
+        </Field>
+        <Field label="评分（可选）">
+          <input value={d.rating} placeholder="如 Booking 9.1 / Google 4.6" onChange={(e) => setD({ ...d, rating: e.target.value })} />
+        </Field>
+        <Field label="备注（可选）">
+          <input value={d.note} placeholder="如 两卧、含早餐、可取消" onChange={(e) => setD({ ...d, note: e.target.value })} />
+        </Field>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={d.pick} onChange={(e) => setD({ ...d, pick: e.target.checked })} />
+        直接选定，计入花费
+      </label>
+      <div className="row">
+        <button className="primary" disabled={!name.trim() && !url} onClick={save}>加入行程</button>
+        <button onClick={() => setOpen(false)}>取消</button>
+      </div>
+    </div>
   );
 }
 
@@ -1727,6 +1872,11 @@ function Settings({
             <NumInput value={trip.children} onChange={(v) => update((t) => void (t.children = v))} />
           </Field>
         </div>
+        {trip.children > 0 && (
+          <Field label="小孩年龄（订房平台按年龄算房型，用逗号隔开）">
+            <AgesInput trip={trip} update={update} />
+          </Field>
+        )}
       </section>
       {children}
 
@@ -1875,4 +2025,18 @@ function AiSettingsCard({ trip, update }: { trip: Trip; update: Update }) {
       <p className="muted small">也可以在每天的「景点 · 住宿 · 餐饮」里单独点「✨ AI 生成推荐」。</p>
     </section>
   );
+}
+
+/** 小孩年龄输入：打字时保留原文，离开输入框才整理 */
+function AgesInput({ trip, update }: { trip: Trip; update: Update }) {
+  const [text, setText] = useState(childAges(trip).join(', '));
+  const commit = () => {
+    const ages = text
+      .split(/[,，\s]+/)
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n) && n >= 0 && n < 18);
+    update((t) => void (t.childAges = ages));
+    setText(childAges({ ...trip, childAges: ages }).join(', '));
+  };
+  return <input inputMode="numeric" value={text} placeholder="如 8, 6" onChange={(e) => setText(e.target.value)} onBlur={commit} />;
 }

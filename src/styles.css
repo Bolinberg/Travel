@@ -2863,3 +2863,178 @@ a.mini.on {
     font-size: 13px;
   }
 }
+
+/* 住哪 / 吃什么：① 去平台找 ② 粘贴链接加入 ③ 候选 */
+.rec-sec {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.rec-sec > h3 {
+  margin: 4px 0 0;
+}
+.rec-step {
+  margin: -6px 0 0;
+}
+.find {
+  display: grid;
+  gap: 6px;
+}
+.find-head {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--sign);
+}
+.find-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+}
+.find-link {
+  display: grid;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  min-width: 0;
+}
+.find-link:hover {
+  border-color: var(--sign);
+}
+.find-link b {
+  color: var(--link);
+  font-size: 14px;
+}
+.find-link span {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.add-link {
+  background: var(--surface);
+  border: 1px solid var(--sign);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.add-link p {
+  margin: 0;
+}
+.rec-sec .add-line {
+  margin-top: 0;
+}
+
+/* 按天花费 */
+.bk-days table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.bk-days th,
+.bk-days td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+.bk-days th:first-child {
+  text-align: left;
+}
+.bk-days thead th {
+  background: var(--sunk);
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.bk-days thead th:first-child {
+  text-align: left;
+}
+.bk-days td.hl {
+  color: var(--amber-ink);
+  font-weight: 700;
+}
+.bk-days {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* 规划流程：① 每天去哪 → ② 住哪 → ③ 吃什么 → ④ 花多少 */
+.flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.flow-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  text-align: left;
+  padding: 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 0;
+}
+.flow-n {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  border: 2px solid var(--sign);
+  color: var(--sign);
+}
+.flow-step.done .flow-n {
+  background: var(--sign);
+  color: var(--sign-ink);
+}
+.flow-text {
+  display: grid;
+  min-width: 0;
+}
+.flow-text b {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.flow-text span {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .flow-step {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    padding: 7px 4px;
+    gap: 3px;
+  }
+}
+.bk-days table {
+  font-size: 12px;
+}
+.bk-days th,
+.bk-days td {
+  padding: 6px 5px;
+}
+.bk-days tbody th {
+  white-space: normal;
+  line-height: 1.25;
+}
+.bk-days tbody th .muted {
+  display: block;
+}

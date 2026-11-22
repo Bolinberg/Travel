@@ -112,6 +112,8 @@ export interface Trip {
   startDate: string; // YYYY-MM-DD
   adults: number;
   children: number;
+  /** 小孩年龄，订房平台搜索时用 */
+  childAges?: number[];
   budget: number;
   vehicle: {
     name: string;
