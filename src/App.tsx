@@ -288,7 +288,7 @@ function signRows(trip: Trip): { place: string; km: number; nights: number }[] {
     }
     rows.push({ place, km, nights: d.accommodation ? 1 : 0 });
   });
-  if (rows.length <= 5) return rows;
+  if (rows.length <= 6) return rows;
   const longest = rows.slice(2, -2).reduce((a, b) => (b.nights > a.nights ? b : a), rows[2]);
   return [rows[0], rows[1], longest, rows[rows.length - 2], rows[rows.length - 1]];
 }
