@@ -142,3 +142,65 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   body { background: #fff; }
   .card { break-inside: avoid; }
 }
+
+/* ---------- 地图与指南 ---------- */
+.tabs button { font-size: 14px; padding: 7px 0; }
+.card.flush { padding: 0; overflow: hidden; }
+.map-wrap { position: relative; }
+.map { width: 100%; border-radius: 10px; z-index: 0; background: var(--accent-soft); }
+.card.flush .map { border-radius: 0; }
+.card > .map-wrap { margin: 8px 0; }
+.map-note {
+  position: absolute; left: 8px; bottom: 8px; z-index: 500;
+  background: var(--surface); color: var(--muted); font-size: 12px;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+}
+.pin { border-radius: 50%; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.pin.end {
+  width: 26px; height: 26px; color: #fff; font: 600 13px/26px sans-serif; text-align: center;
+  border: 2px solid #fff;
+}
+.pin.stop { width: 14px; height: 14px; background: #fff; border: 3px solid; }
+.pop { font-size: 13px; line-height: 1.4; }
+.pop img { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; }
+.pop p { margin: 4px 0 0; }
+.leaflet-container { font: inherit; }
+.leaflet-popup-content { margin: 10px 12px; width: 220px !important; }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 4px; scrollbar-width: none; }
+.chip {
+  flex: none; border-radius: 999px; padding: 4px 12px; font-size: 14px;
+  border: 2px solid var(--border); background: var(--surface);
+}
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+button.plainlink { color: var(--text); font-size: 15px; }
+.gap { gap: 4px 14px; }
+.nowrap { white-space: nowrap; }
+
+.guide { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 4px; }
+.guide h3 { font-size: 15px; margin: 14px 0 8px; }
+
+.sights { display: grid; gap: 10px; }
+.sight {
+  display: grid; grid-template-columns: 104px 1fr; gap: 10px;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg);
+}
+.sight .photo {
+  background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+  min-height: 104px; font-size: 24px;
+}
+.sight .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sight .body { padding: 8px 10px 8px 0; min-width: 0; }
+.sight .body p { margin: 4px 0 6px; color: var(--muted); }
+@media (min-width: 600px) { .sight { grid-template-columns: 160px 1fr; } .sight .photo { min-height: 130px; } }
+
+.recs li { padding: 10px 0; }
+.recs li.picked { background: var(--accent-soft); margin: 0 -10px; padding: 10px; border-radius: 8px; }
+.recs p { margin: 4px 0; }
+.more { margin-top: 6px; }
+button.mini { font-size: 13px; padding: 3px 10px; border-radius: 999px; margin: 2px 6px 2px 0; }
+button.mini.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tools { display: grid; gap: 4px; }
+.tools p { margin: 0; }

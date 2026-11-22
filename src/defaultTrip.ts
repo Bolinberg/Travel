@@ -1,5 +1,7 @@
-import type { Accommodation, ChecklistItem, Day, Expense, Trip } from './types';
+import type { Accommodation, ChecklistItem, Day, Expense, Rec, Trip } from './types';
 import { newId } from './id';
+import { DEFAULT_PLACES } from './places';
+import { GUIDES } from './guides';
 
 /*
  * 默认行程：墨尔本 → 大洋路 → 甘比尔山 → 罗布 → 阿德莱德 → 格兰扁 → 墨尔本（9 天 8 晚）。
@@ -20,7 +22,7 @@ function day(
   accommodation: Accommodation | null,
   notes = '',
 ): Day {
-  return { id: newId(), title, from, to, km, driveHours, stops, accommodation, notes };
+  return { id: newId(), title, from, to, km, driveHours, stops, accommodation, stayOptions: [], dining: [], notes };
 }
 
 function checklist(group: string, items: string[]): ChecklistItem[] {
@@ -121,6 +123,14 @@ export function createDefaultTrip(): Trip {
     ),
   ];
 
+  // 按天挂上住宿 / 餐饮推荐
+  days.forEach((d, i) => {
+    const g = GUIDES[i];
+    if (!g) return;
+    d.stayOptions = (g.stays ?? []).map(toRec);
+    d.dining = (g.dining ?? []).map(toRec);
+  });
+
   const expenses: Expense[] = [
     { id: newId(), title: 'Cleland 野生动物园门票', category: 'activity', amount: 110, dayId: days[6].id, paid: false },
     { id: newId(), title: 'Otway Fly 树顶步道（可选）', category: 'activity', amount: 120, dayId: days[1].id, paid: false },
@@ -131,7 +141,7 @@ export function createDefaultTrip(): Trip {
   ];
 
   return {
-    version: 1,
+    version: 2,
     name: '墨尔本 → 阿德莱德 家庭自驾',
     startDate: '2026-12-19',
     adults: 2,
@@ -140,6 +150,7 @@ export function createDefaultTrip(): Trip {
     vehicle: { name: '家用 SUV', litresPer100km: 9, fuelPrice: 2.05 },
     food: { adultPerDay: 60, childPerDay: 35 },
     days,
+    places: structuredClone(DEFAULT_PLACES),
     expenses,
     checklist: [
       ...checklist('出发前', [
@@ -167,4 +178,25 @@ export function createDefaultTrip(): Trip {
       ]),
     ],
   };
+}
+
+function toRec(r: Omit<Rec, 'id' | 'picked'>): Rec {
+  return { ...r, id: newId(), picked: false };
+}
+
+/** 旧版本（v1）数据升级：补上地点库与推荐信息 */
+export function migrateTrip(t: any): Trip | null {
+  if (!t || !Array.isArray(t.days) || !Array.isArray(t.expenses) || !Array.isArray(t.checklist)) return null;
+  if (t.version === 2) return t as Trip;
+  if (t.version !== 1) return null;
+  const fresh = createDefaultTrip();
+  t.version = 2;
+  t.places = fresh.places;
+  t.days.forEach((d: Day, i: number) => {
+    const f = fresh.days[i];
+    const same = f && f.to === d.to;
+    d.stayOptions = same ? f.stayOptions : [];
+    d.dining = same ? f.dining : [];
+  });
+  return t as Trip;
 }

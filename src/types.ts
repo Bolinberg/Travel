@@ -25,6 +25,35 @@ export interface Accommodation {
   notes: string;
 }
 
+/** 地图上的一个地点（景点 / 城镇） */
+export interface Place {
+  /** 唯一名称，与行程中的出发地/目的地/途经点字符串一致 */
+  name: string;
+  /** 显示名称 */
+  label: string;
+  lat: number;
+  lng: number;
+  /** 英文维基百科条目名，用于加载风景照片和简介 */
+  wiki?: string;
+  /** 中文简介 / 游玩建议 */
+  desc?: string;
+}
+
+/** 住宿或餐饮推荐 */
+export interface Rec {
+  id: string;
+  name: string;
+  /** 所在城镇，用于搜索链接 */
+  where: string;
+  type: string;
+  /** 价格说明，如 "约 $250–350/晚" 或 "$$" */
+  price: string;
+  /** 估算金额（住宿用于一键填入价格） */
+  cost?: number;
+  note: string;
+  picked: boolean;
+}
+
 export interface Day {
   id: string;
   title: string;
@@ -35,6 +64,10 @@ export interface Day {
   /** 途经点 / 景点，每行一个 */
   stops: string[];
   accommodation: Accommodation | null;
+  /** 住宿推荐 */
+  stayOptions: Rec[];
+  /** 餐饮推荐 */
+  dining: Rec[];
   notes: string;
 }
 
@@ -56,7 +89,7 @@ export interface ChecklistItem {
 }
 
 export interface Trip {
-  version: 1;
+  version: 2;
   name: string;
   startDate: string; // YYYY-MM-DD
   adults: number;
@@ -72,6 +105,7 @@ export interface Trip {
     childPerDay: number;
   };
   days: Day[];
+  places: Place[];
   expenses: Expense[];
   checklist: ChecklistItem[];
 }

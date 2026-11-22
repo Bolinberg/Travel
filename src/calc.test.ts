@@ -39,3 +39,38 @@ describe('calc', () => {
     expect(url).toContain('waypoints=Torquay+VIC');
   });
 });
+
+import { migrateTrip } from './defaultTrip';
+import { findPlace } from './geo';
+
+describe('places & migration', () => {
+  it('every default itinerary place has coordinates', () => {
+    const trip = createDefaultTrip();
+    for (const d of trip.days) {
+      for (const n of [d.from, d.to, ...d.stops]) {
+        expect(findPlace(trip, n), n).toBeDefined();
+      }
+    }
+  });
+
+  it('migrates v1 data, keeping user edits', () => {
+    const v2 = createDefaultTrip();
+    const v1: any = structuredClone(v2);
+    v1.version = 1;
+    delete v1.places;
+    v1.days.forEach((d: any) => {
+      delete d.stayOptions;
+      delete d.dining;
+    });
+    v1.budget = 6000;
+    const t = migrateTrip(v1)!;
+    expect(t.version).toBe(2);
+    expect(t.budget).toBe(6000);
+    expect(t.places.length).toBeGreaterThan(10);
+    expect(Array.isArray(t.days[0].dining)).toBe(true);
+  });
+
+  it('rejects garbage', () => {
+    expect(migrateTrip({ foo: 1 })).toBeNull();
+  });
+});

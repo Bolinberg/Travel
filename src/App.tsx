@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Category, Day, Trip } from './types';
+import type { Category, Day, Place, Rec, Trip } from './types';
 import { CATEGORY_LABELS } from './types';
 import { addDays, formatDate, fuelCost, mapsUrl, money, summarize } from './calc';
 import { createDefaultTrip } from './defaultTrip';
-import { downloadJson, isTrip, loadTrip, saveTrip } from './storage';
+import { downloadJson, loadTrip, migrateTrip, saveTrip } from './storage';
 import { newId } from './id';
+import TripMap, { dayColor, dayPlaces } from './TripMap';
+import { fetchRoute, findPlace, geocode, links, useWiki } from './geo';
 
-type Tab = 'overview' | 'itinerary' | 'costs' | 'checklist' | 'settings';
+type Tab = 'overview' | 'map' | 'itinerary' | 'costs' | 'checklist' | 'settings';
 type Update = (mutate: (draft: Trip) => void) => void;
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: '概览' },
+  { key: 'map', label: '地图' },
   { key: 'itinerary', label: '行程' },
   { key: 'costs', label: '费用' },
   { key: 'checklist', label: '清单' },
@@ -20,6 +23,12 @@ const TABS: { key: Tab; label: string }[] = [
 export default function App() {
   const [trip, setTrip] = useState<Trip>(() => loadTrip() ?? createDefaultTrip());
   const [tab, setTab] = useState<Tab>('overview');
+  const [focus, setFocus] = useState<number | null>(null);
+  const showOnMap = (i: number | null) => {
+    setFocus(i);
+    setTab('map');
+    window.scrollTo(0, 0);
+  };
 
   useEffect(() => saveTrip(trip), [trip]);
 
@@ -54,8 +63,9 @@ export default function App() {
         ))}
       </nav>
       <main>
-        {tab === 'overview' && <Overview trip={trip} goTo={setTab} />}
-        {tab === 'itinerary' && <Itinerary trip={trip} update={update} />}
+        {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} />}
+        {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} />}
+        {tab === 'itinerary' && <Itinerary trip={trip} update={update} showOnMap={showOnMap} />}
         {tab === 'costs' && <Costs trip={trip} update={update} />}
         {tab === 'checklist' && <Checklist trip={trip} update={update} />}
         {tab === 'settings' && <Settings trip={trip} update={update} replace={setTrip} />}
@@ -66,7 +76,15 @@ export default function App() {
 
 /* ---------------- 概览 ---------------- */
 
-function Overview({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
+function Overview({
+  trip,
+  goTo,
+  showOnMap,
+}: {
+  trip: Trip;
+  goTo: (t: Tab) => void;
+  showOnMap: (i: number | null) => void;
+}) {
   const s = useMemo(() => summarize(trip), [trip]);
   const done = trip.checklist.filter((c) => c.done).length;
   const pct = trip.budget > 0 ? Math.min(100, (s.total / trip.budget) * 100) : 0;
@@ -117,11 +135,18 @@ function Overview({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
       </section>
 
       <section className="card">
-        <h2>路线</h2>
+        <div className="row between">
+          <h2>路线</h2>
+          <button className="link" onClick={() => showOnMap(null)}>大地图 →</button>
+        </div>
+        <TripMap trip={trip} focus={null} height={260} />
         <ol className="route">
           {trip.days.map((d, i) => (
             <li key={d.id}>
-              <span className="muted">D{i + 1}</span> {leg(d)}{' '}
+              <button className="link plainlink" onClick={() => showOnMap(i)}>
+                <span className="dot" style={{ background: dayColor(i) }} />
+                <span className="muted">D{i + 1}</span> {leg(d)}
+              </button>{' '}
               <span className="muted">{d.km} km</span>
             </li>
           ))}
@@ -145,7 +170,15 @@ const leg = (d: Day) => (d.from === d.to ? `${short(d.from)} 周边` : `${short(
 
 /* ---------------- 行程 ---------------- */
 
-function Itinerary({ trip, update }: { trip: Trip; update: Update }) {
+function Itinerary({
+  trip,
+  update,
+  showOnMap,
+}: {
+  trip: Trip;
+  update: Update;
+  showOnMap: (i: number | null) => void;
+}) {
   const [editing, setEditing] = useState<string | null>(null);
 
   const addDay = () => {
@@ -159,6 +192,8 @@ function Itinerary({ trip, update }: { trip: Trip; update: Update }) {
       driveHours: 0,
       stops: [],
       accommodation: null,
+      stayOptions: [],
+      dining: [],
       notes: '',
     };
     update((t) => void t.days.push(d));
@@ -176,6 +211,7 @@ function Itinerary({ trip, update }: { trip: Trip; update: Update }) {
           update={update}
           editing={editing === d.id}
           setEditing={(on) => setEditing(on ? d.id : null)}
+          showOnMap={() => showOnMap(i)}
         />
       ))}
       <button className="primary block" onClick={addDay}>+ 添加一天</button>
@@ -190,6 +226,7 @@ function DayCard({
   update,
   editing,
   setEditing,
+  showOnMap,
 }: {
   day: Day;
   index: number;
@@ -197,6 +234,7 @@ function DayCard({
   update: Update;
   editing: boolean;
   setEditing: (on: boolean) => void;
+  showOnMap: () => void;
 }) {
   const set = (mutate: (d: Day) => void) =>
     update((t) => {
@@ -249,9 +287,13 @@ function DayCard({
             </p>
           )}
           {day.notes && <p className="notes">{day.notes}</p>}
-          <a className="link" href={mapsUrl(day.from, day.to, day.stops)} target="_blank" rel="noreferrer">
-            在 Google 地图中导航 ↗
-          </a>
+          <div className="row wrap gap">
+            <button className="link" onClick={showOnMap}>在地图上看</button>
+            <a className="link" href={mapsUrl(day.from, day.to, day.stops)} target="_blank" rel="noreferrer">
+              Google 地图导航 ↗
+            </a>
+          </div>
+          <DayGuide trip={trip} day={day} index={index} update={update} />
         </>
       ) : (
         <div className="form">
@@ -279,6 +321,7 @@ function DayCard({
               onChange={(e) => set((d) => void (d.stops = e.target.value.split('\n')))}
             />
           </Field>
+          <PlaceTools trip={trip} day={day} update={update} set={set} />
           <label className="check">
             <input
               type="checkbox"
@@ -341,6 +384,289 @@ function DayCard({
       )}
       {!editing && acc?.notes && <p className="muted small">住宿备注：{acc.notes}</p>}
     </section>
+  );
+}
+
+/* ---------------- 地图 ---------------- */
+
+function MapView({
+  trip,
+  focus,
+  setFocus,
+  goTo,
+}: {
+  trip: Trip;
+  focus: number | null;
+  setFocus: (i: number | null) => void;
+  goTo: (t: Tab) => void;
+}) {
+  const day = focus !== null ? trip.days[focus] : null;
+  return (
+    <>
+      <div className="chips">
+        <button className={focus === null ? 'chip active' : 'chip'} onClick={() => setFocus(null)}>全程</button>
+        {trip.days.map((d, i) => (
+          <button
+            key={d.id}
+            className={focus === i ? 'chip active' : 'chip'}
+            style={focus === i ? { background: dayColor(i), borderColor: dayColor(i) } : { borderColor: dayColor(i) }}
+            onClick={() => setFocus(i)}
+          >
+            D{i + 1}
+          </button>
+        ))}
+      </div>
+      <section className="card flush">
+        <TripMap trip={trip} focus={focus} height={440} />
+      </section>
+      {day ? (
+        <section className="card">
+          <div className="muted small">
+            第 {focus! + 1} 天 · {formatDate(addDays(trip.startDate, focus!))} · {day.km} km · 约 {day.driveHours} 小时
+          </div>
+          <h2>{day.title}</h2>
+          <DayGuide trip={trip} day={day} index={focus!} />
+          <button className="link" onClick={() => goTo('itinerary')}>去行程页编辑 →</button>
+        </section>
+      ) : (
+        <section className="card">
+          <h2>图例</h2>
+          <p className="muted small">
+            彩色线 = 每天的驾车路线（虚线表示真实道路还在加载或离线）；带数字的圆点 = 当晚过夜地；小圆点 = 途经景点。点任意标记查看风景照片和介绍。
+          </p>
+        </section>
+      )}
+    </>
+  );
+}
+
+/** 某天的景点、住宿、餐饮信息（行程页与地图页共用） */
+function DayGuide({ trip, day, index, update }: { trip: Trip; day: Day; index: number; update?: Update }) {
+  const sights = dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from);
+  const town = short(day.to);
+  const checkin = addDays(trip.startDate, index);
+  const setRecs = (key: 'stayOptions' | 'dining', mutate: (list: Rec[], d: Day) => void) =>
+    update?.((t) => {
+      const d = t.days.find((x) => x.id === day.id);
+      if (d) mutate(d[key], d);
+    });
+
+  return (
+    <div className="guide">
+      {sights.length > 0 && (
+        <>
+          <h3>📍 景点与风景</h3>
+          <div className="sights">
+            {sights.map((p) => (
+              <PlaceCard key={p.name} place={p} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {day.accommodation && (
+        <RecSection
+          title="🏨 住宿推荐"
+          recs={day.stayOptions}
+          pickLabel={['选这家', '已选']}
+          more={[
+            { label: 'Booking 搜索', href: links.booking(day.to, checkin, addDays(checkin, 1), trip.adults) },
+            { label: 'Tripadvisor 酒店', href: links.tripadvisor(`hotels ${town}`) },
+          ]}
+          onPick={
+            update &&
+            ((r) =>
+              setRecs('stayOptions', (list, d) => {
+                const picked = !r.picked;
+                list.forEach((x) => (x.picked = picked && x.id === r.id));
+                if (picked && d.accommodation) {
+                  d.accommodation.name = r.name;
+                  if (r.cost) d.accommodation.cost = r.cost;
+                }
+              }))
+          }
+          onRemove={update && ((r) => setRecs('stayOptions', (_, d) => void (d.stayOptions = d.stayOptions.filter((x) => x.id !== r.id))))}
+          onAdd={update && ((r) => setRecs('stayOptions', (list) => void list.push(r)))}
+          defaultWhere={town}
+        />
+      )}
+
+      <RecSection
+        title="🍽 餐饮推荐"
+        recs={day.dining}
+        pickLabel={['想去', '想去 ✓']}
+        more={[
+          { label: 'Tripadvisor 餐厅', href: links.tripadvisor(`restaurants ${town}`) },
+          { label: 'Google 附近餐厅', href: links.googleMaps(`restaurants ${day.to}`) },
+        ]}
+        onPick={update && ((r) => setRecs('dining', (list) => {
+          const x = list.find((y) => y.id === r.id);
+          if (x) x.picked = !x.picked;
+        }))}
+        onRemove={update && ((r) => setRecs('dining', (_, d) => void (d.dining = d.dining.filter((x) => x.id !== r.id))))}
+        onAdd={update && ((r) => setRecs('dining', (list) => void list.push(r)))}
+        defaultWhere={town}
+      />
+    </div>
+  );
+}
+
+function PlaceCard({ place }: { place: Place }) {
+  const wiki = useWiki(place.wiki);
+  return (
+    <article className="sight">
+      <div className="photo">
+        {wiki?.thumb ? <img src={wiki.thumb} alt={place.label} loading="lazy" /> : <span>📷</span>}
+      </div>
+      <div className="body">
+        <b>{place.label}</b>
+        <p className="small">{place.desc}</p>
+        <div className="row wrap gap small">
+          <a className="link" href={links.tripadvisor(short(place.name))} target="_blank" rel="noreferrer">Tripadvisor</a>
+          <a className="link" href={links.googleMaps(place.name)} target="_blank" rel="noreferrer">地图</a>
+          {wiki?.url && <a className="link" href={wiki.url} target="_blank" rel="noreferrer">维基百科</a>}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RecSection({
+  title,
+  recs,
+  pickLabel,
+  more,
+  onPick,
+  onRemove,
+  onAdd,
+  defaultWhere,
+}: {
+  title: string;
+  recs: Rec[];
+  pickLabel: [string, string];
+  more: { label: string; href: string }[];
+  onPick?: (r: Rec) => void;
+  onRemove?: (r: Rec) => void;
+  onAdd?: (r: Rec) => void;
+  defaultWhere: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ name: '', type: '', price: '', note: '' });
+  const save = () => {
+    if (!draft.name.trim() || !onAdd) return;
+    const cost = Number(draft.price.replace(/[^\d.]/g, '')) || undefined;
+    onAdd({ id: newId(), where: defaultWhere, picked: false, cost, ...draft, name: draft.name.trim() });
+    setDraft({ name: '', type: '', price: '', note: '' });
+    setAdding(false);
+  };
+
+  return (
+    <>
+      <h3>{title}</h3>
+      {recs.length === 0 && <p className="muted small">暂无推荐，可用下方链接搜索后自己添加。</p>}
+      <ul className="plain recs">
+        {recs.map((r) => (
+          <li key={r.id} className={r.picked ? 'picked' : ''}>
+            <div className="row between">
+              <b>{r.name}</b>
+              <span className="muted small nowrap">{r.price}</span>
+            </div>
+            <div className="muted small">
+              {r.type}
+              {r.where && r.where !== defaultWhere ? ` · ${r.where}` : ''}
+            </div>
+            {r.note && <p className="small">{r.note}</p>}
+            <div className="row wrap gap small">
+              <a className="link" href={links.tripadvisor(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">Tripadvisor</a>
+              <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
+              <span className="spacer" />
+              {onPick && (
+                <button className={r.picked ? 'mini on' : 'mini'} onClick={() => onPick(r)}>
+                  {r.picked ? pickLabel[1] : pickLabel[0]}
+                </button>
+              )}
+              {onRemove && (
+                <button className="icon" aria-label="删除" onClick={() => onRemove(r)}>×</button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="row wrap gap small more">
+        {more.map((m) => (
+          <a key={m.label} className="link" href={m.href} target="_blank" rel="noreferrer">{m.label} ↗</a>
+        ))}
+        {onAdd && !adding && <button className="link" onClick={() => setAdding(true)}>+ 自己添加</button>}
+      </div>
+      {adding && (
+        <div className="form add">
+          <input placeholder="名称" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <div className="grid2">
+            <input placeholder="类型（如 汽车旅馆 / 海鲜）" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })} />
+            <input placeholder="价格（如 $220 或 $$）" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
+          </div>
+          <input placeholder="备注" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
+          <div className="row">
+            <button className="primary" onClick={save}>保存</button>
+            <button onClick={() => setAdding(false)}>取消</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 编辑模式下：为新地点查坐标、按真实路线计算里程 */
+function PlaceTools({
+  trip,
+  day,
+  update,
+  set,
+}: {
+  trip: Trip;
+  day: Day;
+  update: Update;
+  set: (mutate: (d: Day) => void) => void;
+}) {
+  const [busy, setBusy] = useState('');
+  const names = [day.from, ...day.stops, day.to].map((n) => n.trim()).filter(Boolean);
+  const unknown = [...new Set(names.filter((n) => !findPlace(trip, n)))];
+
+  const locate = async (name: string) => {
+    setBusy(name);
+    const hit = await geocode(name);
+    setBusy('');
+    if (!hit) return alert(`没找到「${name}」，试试写成英文全称加州名，如 "Lorne VIC"。`);
+    update((t) => void t.places.push({ name, label: short(name), ...hit }));
+  };
+
+  const calc = async () => {
+    setBusy('route');
+    const r = await fetchRoute(dayPlaces(trip, day));
+    setBusy('');
+    if (!r) return alert('无法获取路线（可能离线，或有地点缺少坐标）。');
+    set((d) => {
+      d.km = r.km;
+      d.driveHours = r.hours;
+    });
+  };
+
+  return (
+    <div className="tools small">
+      {unknown.length > 0 && (
+        <p>
+          <span className="muted">以下地点还没有坐标，地图上不会显示：</span>
+          {unknown.map((n) => (
+            <button key={n} className="mini" disabled={!!busy} onClick={() => locate(n)}>
+              {busy === n ? '查找中…' : `定位「${short(n)}」`}
+            </button>
+          ))}
+        </p>
+      )}
+      <button className="mini" disabled={!!busy} onClick={calc}>
+        {busy === 'route' ? '计算中…' : '按地图路线自动计算里程和时间'}
+      </button>
+    </div>
   );
 }
 
@@ -531,8 +857,8 @@ function Settings({ trip, update, replace }: { trip: Trip; update: Update; repla
 
   const importFile = async (f: File) => {
     try {
-      const t = JSON.parse(await f.text());
-      if (!isTrip(t)) throw new Error('格式不对');
+      const t = migrateTrip(JSON.parse(await f.text()));
+      if (!t) throw new Error('格式不对');
       replace(t);
       alert('导入成功');
     } catch {
