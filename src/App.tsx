@@ -12,6 +12,7 @@ import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './te
 import { applyVerifiedStays } from './stays';
 import Bookings, { BOOKABLE, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
+import { autoRouteDay, routeKey } from './autoRoute';
 import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks, type SearchLink } from './search';
 import Versions from './Versions';
 import { useSync } from './useSync';
@@ -591,7 +592,7 @@ function Timeline({
       id: newId(),
       title: '新的一天',
       from: last?.to ?? '',
-      to: last?.to ?? '',
+      to: '',
       km: 0,
       driveHours: 0,
       stops: [],
@@ -671,7 +672,7 @@ function DayDetail({
 }) {
   const day = trip.days[index];
   const [tab, setTab] = useState<DayTab>(initialTab === 'stays' && !day.accommodation ? 'plan' : initialTab);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(day.title === '新的一天');
   const set = (mutate: (d: Day) => void) =>
     update((t) => {
       const d = t.days.find((x) => x.id === day.id);
@@ -840,6 +841,61 @@ function TonightStay({
   );
 }
 
+/** 地址输入：打字时不改行程，离开输入框或按回车才提交（避免每个字都去查位置） */
+function AddressInput({
+  value,
+  onCommit,
+  placeholder,
+  label,
+  listId,
+  autoFocus,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  placeholder: string;
+  label: string;
+  listId: string;
+  autoFocus?: boolean;
+}) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  // 按回车提交后紧接着会失焦，别再提交一次
+  const done = useRef(false);
+  const commit = () => {
+    if (done.current) return;
+    if (text.trim() !== value.trim()) {
+      done.current = true;
+      onCommit(text.trim());
+      setTimeout(() => (done.current = false), 0);
+    }
+  };
+  return (
+    <input
+      aria-label={label}
+      value={text}
+      list={listId}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+    />
+  );
+}
+
+/** 自动生成的标题：「A → B」或「A 周边」 */
+const autoTitle = (d: Pick<Day, 'from' | 'to'>) => (d.from.trim() && d.to.trim() ? leg(d as Day) : '新的一天');
+
+/**
+ * 编辑某一天：只填地址（目的地、途经点），其余自动算——
+ * 出发地沿用前一天的目的地，坐标、里程、车程、油费、标题都自动生成；手动改放在「高级」里。
+ */
 function DayEditor({
   trip,
   index,
@@ -855,6 +911,206 @@ function DayEditor({
 }) {
   const day = trip.days[index];
   const acc = day.accommodation;
+  const prev = trip.days[index - 1];
+  const next = trip.days[index + 1];
+  const last = index === trip.days.length - 1;
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [editFrom, setEditFrom] = useState(false);
+  const listId = `places-${day.id}`;
+  const fuel = isDriveDay(day) ? fuelCost(day.km, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
+
+  // 地址改了就自动重算（打开时已经算好的不重算，避免覆盖原来按实际情况调过的车程）
+  const key = routeKey(day);
+  const openedKey = useRef(day.routeKey ?? key);
+  const isNew = day.km === 0 && day.from.trim() !== '' && day.to.trim() !== '' && day.from.trim() !== day.to.trim();
+  useEffect(() => {
+    if (day.manualRoute || !day.from.trim() || !day.to.trim()) return;
+    if (key === day.routeKey || (key === openedKey.current && !isNew)) return;
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setBusy(true);
+      const r = await autoRouteDay(trip, day, update, (s) => alive && setStatus(s));
+      if (!alive) return;
+      setBusy(false);
+      if (!r) return setStatus('');
+      const parts = [];
+      if (r.missing.length) parts.push(`没找到「${r.missing.map(short).join('、')}」的位置，可以写得更完整，如「Lorne VIC」「Victor Harbor SA」`);
+      if (r.modeChanged) parts.push(`交通方式已按距离自动改成「${MODES[r.modeChanged].label}」，可在「高级」里改`);
+      if (r.estimated) parts.push(`有 ${r.estimated} 段没取到真实道路（可能离线），先按直线估算`);
+      setStatus(parts.join('；'));
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, day.manualRoute]);
+
+  /** 改地址：标题是自动生成的就跟着改；改了目的地，第二天的出发地也跟着改 */
+  const setPlaces = (mutate: (d: Day) => void) =>
+    update((t) => {
+      const i = t.days.findIndex((x) => x.id === day.id);
+      const d = t.days[i];
+      if (!d) return;
+      const wasAuto = !d.title.trim() || d.title === '新的一天' || d.title === autoTitle(d);
+      const oldTo = d.to;
+      mutate(d);
+      d.stops = d.stops.map((s) => s.trim()).filter(Boolean);
+      if (wasAuto) d.title = autoTitle(d);
+      const n = t.days[i + 1];
+      if (n && oldTo !== d.to && n.from.trim() === oldTo.trim()) {
+        const nAuto = !n.title.trim() || n.title === autoTitle(n);
+        n.from = d.to;
+        if (nAuto) n.title = autoTitle(n);
+      }
+    });
+
+  // 第二天的出发地跟着改了：也帮它重算
+  useEffect(() => {
+    if (!next || next.manualRoute || routeKey(next) === next.routeKey || next.from.trim() !== day.to.trim()) return;
+    if (next.routeKey === undefined && next.km > 0) return; // 原来就有的数据，没改过出发地
+    const timer = setTimeout(() => void autoRouteDay(trip, next, update), 2500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next?.from]);
+
+  const known = [...new Set(trip.places.map((p) => p.name))];
+
+  return (
+    <div className="form day-editor">
+      <datalist id={listId}>
+        {known.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+
+      <div className="de-route">
+        <div className="de-row">
+          <span className="de-dot" aria-hidden="true" />
+          <span className="de-label">从</span>
+          {editFrom || index === 0 || !prev ? (
+            <AddressInput
+              label="出发地"
+              value={day.from}
+              listId={listId}
+              placeholder="出发地址，如 Point Cook VIC"
+              onCommit={(v) => setPlaces((d) => void (d.from = v))}
+            />
+          ) : (
+            <span className="de-from">
+              {short(day.from) || '—'}
+              <span className="muted small">（前一天的目的地）</span>
+              <button className="link small" onClick={() => setEditFrom(true)}>改</button>
+            </span>
+          )}
+        </div>
+        {day.stops.map((s, i) => (
+          <div className="de-row" key={i + s}>
+            <span className="de-dot small" aria-hidden="true" />
+            <span className="de-label">途经</span>
+            <AddressInput
+              label={`途经点 ${i + 1}`}
+              value={s}
+              listId={listId}
+              placeholder="途经的地方或景点"
+              onCommit={(v) => setPlaces((d) => void (d.stops[i] = v))}
+            />
+            <button className="icon" aria-label={`删除途经点 ${short(s)}`} onClick={() => setPlaces((d) => void d.stops.splice(i, 1))}>
+              ×
+            </button>
+          </div>
+        ))}
+        <div className="de-row">
+          <span className="de-dot small ghost" aria-hidden="true" />
+          <span className="de-label" />
+          <AddressInput
+            key={day.stops.length}
+            label="添加途经点"
+            value=""
+            listId={listId}
+            placeholder="+ 加一个途经点（可选）"
+            onCommit={(v) => v && setPlaces((d) => void d.stops.push(v))}
+          />
+        </div>
+        <div className="de-row">
+          <span className="de-dot end" aria-hidden="true" />
+          <span className="de-label">到</span>
+          <AddressInput
+            label="目的地"
+            value={day.to}
+            listId={listId}
+            autoFocus={day.title === '新的一天'}
+            placeholder="今天去哪，如 Robe SA"
+            onCommit={(v) => setPlaces((d) => void (d.to = v))}
+          />
+        </div>
+      </div>
+
+      <div className={`de-auto${busy ? ' busy' : ''}`} aria-live="polite">
+        <div className="de-auto-head">自动计算{day.manualRoute ? '（已改为手动）' : ''}</div>
+        <div className="de-auto-vals">
+          <span>
+            <b>{day.km}</b> km
+          </span>
+          <span>
+            约 <b>{day.driveHours}</b> 小时
+          </span>
+          <span>油费 <b>{fuel ? money(fuel) : '—'}</b></span>
+          <span className="muted small">{modeSummary(day)}</span>
+        </div>
+        {(busy || status) && <p className="small de-status">{status}</p>}
+      </div>
+
+      {!last && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!acc}
+            onChange={(e) =>
+              set((d) => {
+                d.accommodation = e.target.checked ? { name: '', cost: 0, booked: false, paid: false, notes: '' } : null;
+              })
+            }
+          />
+          今晚住在 {short(day.to) || '目的地'}（住宿在「住宿」分页里按评分找、加入）
+        </label>
+      )}
+
+      <details className="advanced">
+        <summary className="muted small">高级：标题、交通方式、手动改里程、备注</summary>
+        <div className="form">
+          <Field label="标题（默认按路线自动生成）">
+            <input value={day.title} onChange={(e) => set((d) => void (d.title = e.target.value))} />
+          </Field>
+          <ModeEditor day={day} set={set} />
+          <div className="grid2">
+            <Field label="里程 (km)">
+              <NumInput value={day.km} onChange={(v) => set((d) => void ((d.km = v), (d.manualRoute = true)))} />
+            </Field>
+            <Field label="路上时间 (小时)">
+              <NumInput value={day.driveHours} step={0.5} onChange={(v) => set((d) => void ((d.driveHours = v), (d.manualRoute = true)))} />
+            </Field>
+          </div>
+          {day.manualRoute && (
+            <button className="mini" onClick={() => set((d) => void ((d.manualRoute = false), (d.routeKey = undefined)))}>
+              恢复自动计算
+            </button>
+          )}
+          <PlaceTools trip={trip} day={day} update={update} set={set} />
+          <Field label="备注">
+            <textarea rows={3} value={day.notes} onChange={(e) => set((d) => void (d.notes = e.target.value))} />
+          </Field>
+        </div>
+      </details>
+
+      <DayMoveDelete trip={trip} index={index} update={update} onDeleted={onDeleted} />
+    </div>
+  );
+}
+
+function DayMoveDelete({ trip, index, update, onDeleted }: { trip: Trip; index: number; update: Update; onDeleted?: () => void }) {
+  const day = trip.days[index];
   const move = (dir: -1 | 1) =>
     update((t) => {
       const j = index + dir;
@@ -873,71 +1129,11 @@ function DayEditor({
     onDeleted?.();
   };
   return (
-    <div className="form">
-      <Field label="标题">
-        <input value={day.title} onChange={(e) => set((d) => void (d.title = e.target.value))} />
-      </Field>
-      <div className="grid2">
-        <Field label="出发地">
-          <input value={day.from} onChange={(e) => set((d) => void (d.from = e.target.value))} />
-        </Field>
-        <Field label="目的地">
-          <input value={day.to} onChange={(e) => set((d) => void (d.to = e.target.value))} />
-        </Field>
-        <Field label="里程 (km)">
-          <NumInput value={day.km} onChange={(v) => set((d) => void (d.km = v))} />
-        </Field>
-        <Field label="路上时间 (小时)">
-          <NumInput value={day.driveHours} step={0.5} onChange={(v) => set((d) => void (d.driveHours = v))} />
-        </Field>
-      </div>
-      <Field label="途经点 / 景点（每行一个）">
-        <textarea rows={3} value={day.stops.join('\n')} onChange={(e) => set((d) => void (d.stops = e.target.value.split('\n')))} />
-      </Field>
-      <ModeEditor day={day} set={set} />
-      <PlaceTools trip={trip} day={day} update={update} set={set} />
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={!!acc}
-          onChange={(e) =>
-            set((d) => {
-              d.accommodation = e.target.checked ? { name: '', cost: 0, booked: false, paid: false, notes: '' } : null;
-            })
-          }
-        />
-        当晚住宿
-      </label>
-      {acc && (
-        <div className="grid2">
-          <Field label="住宿名称">
-            <input value={acc.name} onChange={(e) => set((d) => void (d.accommodation!.name = e.target.value))} />
-          </Field>
-          <Field label="价格 (AUD)">
-            <NumInput value={acc.cost} onChange={(v) => set((d) => void (d.accommodation!.cost = v))} />
-          </Field>
-          <label className="check">
-            <input type="checkbox" checked={acc.booked} onChange={(e) => set((d) => void (d.accommodation!.booked = e.target.checked))} />
-            已预订
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={acc.paid} onChange={(e) => set((d) => void (d.accommodation!.paid = e.target.checked))} />
-            已付款
-          </label>
-          <Field label="住宿备注（确认号、入住时间…）" wide>
-            <input value={acc.notes} onChange={(e) => set((d) => void (d.accommodation!.notes = e.target.value))} />
-          </Field>
-        </div>
-      )}
-      <Field label="备注">
-        <textarea rows={3} value={day.notes} onChange={(e) => set((d) => void (d.notes = e.target.value))} />
-      </Field>
-      <div className="row wrap">
-        <button onClick={() => move(-1)} disabled={index === 0}>上移</button>
-        <button onClick={() => move(1)} disabled={index === trip.days.length - 1}>下移</button>
-        <span className="spacer" />
-        <button className="danger" onClick={remove}>删除这天</button>
-      </div>
+    <div className="row wrap">
+      <button onClick={() => move(-1)} disabled={index === 0}>上移</button>
+      <button onClick={() => move(1)} disabled={index === trip.days.length - 1}>下移</button>
+      <span className="spacer" />
+      <button className="danger" onClick={remove}>删除这天</button>
     </div>
   );
 }
@@ -1744,7 +1940,7 @@ function PlaceTools({
       )}
       <div className="row wrap">
         <button className="mini" disabled={!!busy} onClick={calc}>
-          {busy === 'route' ? '计算中…' : '按地图路线自动计算里程和时间'}
+          {busy === 'route' ? '计算中…' : '重新按真实道路计算'}
         </button>
         <button className="mini" disabled={day.stops.filter((x) => x.trim()).length < 2} onClick={reorder}>
           途经点按顺路排序

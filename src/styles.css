@@ -3038,3 +3038,99 @@ a.mini.on {
 .bk-days tbody th .muted {
   display: block;
 }
+
+/* 编辑某一天：只填地址 */
+.day-editor {
+  gap: 12px;
+}
+.de-route {
+  display: grid;
+  gap: 6px;
+  position: relative;
+}
+.de-row {
+  display: grid;
+  grid-template-columns: 14px 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+.de-row:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 26px;
+  bottom: -14px;
+  width: 2px;
+  background: var(--line);
+}
+.de-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2.5px solid var(--sign);
+  background: var(--surface);
+  position: relative;
+  z-index: 1;
+}
+.de-dot.small {
+  width: 10px;
+  height: 10px;
+  margin-left: 1px;
+  border-width: 2px;
+}
+.de-dot.ghost {
+  border-style: dashed;
+  border-color: var(--line);
+}
+.de-dot.end {
+  background: var(--sign);
+}
+.de-label {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.de-row input {
+  grid-column: 3;
+}
+.de-row > .icon {
+  grid-column: 4;
+}
+.de-from {
+  grid-column: 3 / 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-weight: 700;
+  padding: 6px 0;
+}
+.de-auto {
+  background: var(--sunk);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.de-auto.busy {
+  background: var(--amber-soft);
+}
+.de-auto-head {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--sign);
+  letter-spacing: 0.04em;
+}
+.de-auto-vals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+.de-auto-vals b {
+  font-size: 18px;
+}
+.de-status {
+  margin: 4px 0 0;
+  color: var(--amber-ink);
+}

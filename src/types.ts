@@ -84,6 +84,10 @@ export interface Day {
   /** 餐饮推荐 */
   dining: Rec[];
   notes: string;
+  /** 里程和车程是按哪组地址自动算的（地址变了就重算） */
+  routeKey?: string;
+  /** 里程和车程是手动填的，不再自动算 */
+  manualRoute?: boolean;
 }
 
 export interface Expense {

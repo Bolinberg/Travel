@@ -114,10 +114,13 @@ export function useWiki(title?: string): WikiInfo | null {
 
 /* ---------- 地点查询 ---------- */
 
-export async function geocode(name: string): Promise<{ lat: number; lng: number } | null> {
+/** country：两位国家代码（如 au），行程都在同一个国家时用来避免查到别国的同名地点 */
+export async function geocode(name: string, country?: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(name),
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+        encodeURIComponent(name) +
+        (country ? `&countrycodes=${country}` : ''),
     );
     if (!r.ok) return null;
     const [hit] = await r.json();
