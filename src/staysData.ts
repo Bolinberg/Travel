@@ -45,6 +45,17 @@ export const VERIFIED_STAYS: Record<string, VerifiedStay[]> = {
   ],
   "Mount Gambier SA": [
     {
+      "name": "The Barn Accommodation",
+      "town": "Mount Gambier（Ob Flat，747 Glenelg River Rd）",
+      "type": "两卧公寓（约 60㎡，可住 5 人）/ 家庭套房（最多 7 人）",
+      "officialUrl": "https://www.barn.com.au/",
+      "bookingUrl": "https://www.booking.com/hotel/au/barn-accommodation.html",
+      "rating": "Expedia 9.2/10（约 1,000 条）；Kayak 8.9/10",
+      "priceNote": "估算约 $250–320/晚（以官网报价为准）",
+      "cost": 280,
+      "note": "自带厨房的公寓，院内就是 The Barn Steakhouse 牛排馆，到了直接吃晚饭；离市中心和蓝湖约 8 km，傍晚路上袋鼠多"
+    },
+    {
       "name": "BIG4 Blue Lake Holiday Park",
       "town": "Mount Gambier",
       "type": "度假村两卧小屋（可住 4–6 人）",
