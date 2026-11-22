@@ -17,7 +17,7 @@ describe('calc', () => {
     expect(s.days).toBe(9);
     expect(s.nights).toBe(8);
     expect(s.totalKm).toBe(1975);
-    expect(s.byCategory.accommodation).toBe(280 + 220 + 180 + 260 + 250 * 3 + 230);
+    expect(s.byCategory.accommodation).toBe(290 + 220 + 180 + 260 + 380 * 3 + 250);
     // 餐饮 = (60*2 + 35*2) * 9 + 零食 120
     expect(s.byCategory.food).toBe(190 * 9 + 120);
     expect(s.total).toBeCloseTo(Object.values(s.byCategory).reduce((a, b) => a + b, 0));
@@ -30,7 +30,7 @@ describe('calc', () => {
     trip.days[0].accommodation!.paid = true;
     trip.expenses[0].paid = true;
     const s = summarize(trip);
-    expect(s.paid).toBe(280 + trip.expenses[0].amount);
+    expect(s.paid).toBe(290 + trip.expenses[0].amount);
     expect(s.unpaid).toBeCloseTo(s.total - s.paid);
   });
 

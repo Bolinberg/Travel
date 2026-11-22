@@ -38,7 +38,7 @@ export function createDefaultTrip(): Trip {
       195,
       3.5,
       ['Torquay VIC', 'Bells Beach VIC', 'Split Point Lighthouse, Aireys Inlet VIC', 'Lorne VIC'],
-      stay('Apollo Bay 住宿', 280),
+      stay('Apollo Bay 住宿', 290),
       '早出发避开周末出城车流；Lorne 午餐。',
     ),
     day(
@@ -78,7 +78,7 @@ export function createDefaultTrip(): Trip {
       345,
       4,
       ['Kingston SE SA', 'Coorong National Park SA', 'Hahndorf SA'],
-      stay('Adelaide 住宿（第 1 晚）', 250),
+      stay('Adelaide 住宿（第 1 晚）', 380),
       '最长的一天，中途在 Kingston SE / Meningie 休息；Hahndorf 德国小镇晚餐。',
     ),
     day(
@@ -88,7 +88,7 @@ export function createDefaultTrip(): Trip {
       30,
       0.5,
       ['Adelaide Central Market SA', 'Adelaide Botanic Garden SA', 'Glenelg SA'],
-      stay('Adelaide 住宿（第 2 晚）', 250),
+      stay('Adelaide 住宿（第 2 晚）', 380),
       'Glenelg 海滩看日落，可坐电车。',
     ),
     day(
@@ -98,7 +98,7 @@ export function createDefaultTrip(): Trip {
       150,
       2,
       ['Cleland Wildlife Park SA', 'Barossa Valley SA'],
-      stay('Adelaide 住宿（第 3 晚）', 250),
+      stay('Adelaide 住宿（第 3 晚）', 380),
       '若遇圣诞节当天（12/25）多数商店和景点关门，请调整。',
     ),
     day(
@@ -108,7 +108,7 @@ export function createDefaultTrip(): Trip {
       500,
       5.5,
       ['Tailem Bend SA', 'Bordertown SA', 'Horsham VIC'],
-      stay('Halls Gap 住宿', 230),
+      stay('Halls Gap 住宿', 250),
       '返程长途，每 2 小时休息一次。Halls Gap 傍晚常见袋鼠。',
     ),
     day(

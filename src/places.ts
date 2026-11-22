@@ -11,7 +11,7 @@ export const DEFAULT_PLACES: Place[] = [
     desc: '大洋路起点，澳洲冲浪之都。可逛 Surf Coast 冲浪品牌店、Torquay 前滩散步，适合第一站喝咖啡休息。',
   },
   {
-    name: 'Bells Beach VIC', label: 'Bells Beach 钟声海滩', lat: -38.3713, lng: 144.2817, wiki: 'Bells Beach, Victoria',
+    name: 'Bells Beach VIC', label: 'Bells Beach 钟声海滩', lat: -38.3713, lng: 144.2817, wiki: 'Bells Beach',
     desc: '世界知名冲浪海滩，Rip Curl Pro 比赛举办地。观景台俯瞰海浪，停留 15–20 分钟即可。',
   },
   {
@@ -49,7 +49,7 @@ export const DEFAULT_PLACES: Place[] = [
   },
   {
     name: 'Tower Hill Wildlife Reserve VIC', label: 'Tower Hill 野生动物保护区', lat: -38.317, lng: 142.36,
-    wiki: 'Tower Hill (Victoria)',
+    wiki: 'Tower Hill Wildlife Reserve',
     desc: '死火山口里的保护区，免费入园，很容易看到鸸鹋、考拉和袋鼠。',
   },
   {
@@ -61,7 +61,7 @@ export const DEFAULT_PLACES: Place[] = [
     desc: '建在死火山上的城市，以火山湖和天坑闻名。',
   },
   {
-    name: 'Blue Lake, Mount Gambier SA', label: '蓝湖', lat: -37.846, lng: 140.777, wiki: 'Blue Lake (South Australia)',
+    name: 'Blue Lake, Mount Gambier SA', label: '蓝湖', lat: -37.846, lng: 140.777, wiki: 'Blue Lake / Warwar',
     desc: '火山口湖，每年 11 月至次年 3 月湖水变成钴蓝色——12 月正是最蓝的时候。环湖步道约 3.6 km。',
   },
   {
@@ -69,7 +69,7 @@ export const DEFAULT_PLACES: Place[] = [
     desc: '塌陷的石灰岩天坑里建成的下沉花园，免费。傍晚有负鼠出来觅食。',
   },
   {
-    name: 'Beachport SA', label: 'Beachport 海滩港', lat: -37.48, lng: 140.012, wiki: 'Beachport, South Australia',
+    name: 'Beachport SA', label: 'Beachport 海滩港', lat: -37.48, lng: 140.012, wiki: 'Beachport',
     desc: '有南澳第二长的木栈桥；附近 Pool of Siloam 盐湖浮力很大，孩子可以体验漂浮。',
   },
   {
@@ -77,7 +77,7 @@ export const DEFAULT_PLACES: Place[] = [
     desc: '历史海滨小镇，Long Beach 可开车上沙滩，Obelisk 方尖碑和海岸步道风景好，小镇很适合慢逛。',
   },
   {
-    name: 'Kingston SE SA', label: 'Kingston SE（大龙虾）', lat: -36.829, lng: 139.853, wiki: 'Kingston SE, South Australia',
+    name: 'Kingston SE SA', label: 'Kingston SE（大龙虾）', lat: -36.829, lng: 139.853, wiki: 'Kingston SE',
     desc: '路边的“Larry the Lobster”巨型龙虾雕塑是经典打卡点，适合中途休息。',
   },
   {
@@ -102,7 +102,7 @@ export const DEFAULT_PLACES: Place[] = [
     desc: '从市区坐电车直达的海滨区，Jetty Road 吃喝逛，海滩看日落；夏天很热闹。',
   },
   {
-    name: 'Cleland Wildlife Park SA', label: 'Cleland 野生动物园', lat: -34.968, lng: 138.695, wiki: 'Cleland Wildlife Park',
+    name: 'Cleland Wildlife Park SA', label: 'Cleland 野生动物园', lat: -34.968, lng: 138.695, wiki: 'Cleland National Park',
     desc: '可以近距离喂袋鼠、和考拉合影（需预约时段），孩子最爱。可顺路上 Mount Lofty 观景台看城市全景。',
   },
   {
@@ -113,7 +113,7 @@ export const DEFAULT_PLACES: Place[] = [
   { name: 'Bordertown SA', label: 'Bordertown', lat: -36.311, lng: 140.771, wiki: 'Bordertown, South Australia', desc: '南澳边境小镇，镇上有白袋鼠保护区（免费）。' },
   { name: 'Horsham VIC', label: 'Horsham', lat: -36.711, lng: 142.199, wiki: 'Horsham, Victoria', desc: '维州西部区域中心，午餐和加油。' },
   {
-    name: 'Halls Gap VIC', label: 'Halls Gap 霍尔斯盖普', lat: -37.137, lng: 142.519, wiki: 'Halls Gap, Victoria',
+    name: 'Halls Gap VIC', label: 'Halls Gap 霍尔斯盖普', lat: -37.137, lng: 142.519, wiki: 'Halls Gap',
     desc: '格兰扁国家公园中心的山间小镇，傍晚草地上常有成群袋鼠，周边有多条瀑布和观景步道。',
   },
   {

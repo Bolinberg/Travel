@@ -204,3 +204,7 @@ button.mini { font-size: 13px; padding: 3px 10px; border-radius: 999px; margin: 
 button.mini.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tools { display: grid; gap: 4px; }
 .tools p { margin: 0; }
+details.fold { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+details.fold > summary { cursor: pointer; color: var(--accent); font-size: 14px; }
+details.fold .guide { border-top: 0; margin-top: 0; }
+@media print { details.fold .guide { display: block; } }

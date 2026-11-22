@@ -64,7 +64,7 @@ export default function App() {
       </nav>
       <main>
         {tab === 'overview' && <Overview trip={trip} goTo={setTab} showOnMap={showOnMap} />}
-        {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} />}
+        {tab === 'map' && <MapView trip={trip} focus={focus} setFocus={setFocus} goTo={setTab} update={update} />}
         {tab === 'itinerary' && <Itinerary trip={trip} update={update} showOnMap={showOnMap} />}
         {tab === 'costs' && <Costs trip={trip} update={update} />}
         {tab === 'checklist' && <Checklist trip={trip} update={update} />}
@@ -293,7 +293,13 @@ function DayCard({
               Google 地图导航 ↗
             </a>
           </div>
-          <DayGuide trip={trip} day={day} index={index} update={update} />
+          <details className="fold">
+            <summary>
+              景点 {dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from).length} · 住宿推荐{' '}
+              {day.stayOptions.length} · 餐饮推荐 {day.dining.length}
+            </summary>
+            <DayGuide trip={trip} day={day} index={index} update={update} />
+          </details>
         </>
       ) : (
         <div className="form">
@@ -394,11 +400,13 @@ function MapView({
   focus,
   setFocus,
   goTo,
+  update,
 }: {
   trip: Trip;
   focus: number | null;
   setFocus: (i: number | null) => void;
   goTo: (t: Tab) => void;
+  update: Update;
 }) {
   const day = focus !== null ? trip.days[focus] : null;
   return (
@@ -425,7 +433,7 @@ function MapView({
             第 {focus! + 1} 天 · {formatDate(addDays(trip.startDate, focus!))} · {day.km} km · 约 {day.driveHours} 小时
           </div>
           <h2>{day.title}</h2>
-          <DayGuide trip={trip} day={day} index={focus!} />
+          <DayGuide trip={trip} day={day} index={focus!} update={update} />
           <button className="link" onClick={() => goTo('itinerary')}>去行程页编辑 →</button>
         </section>
       ) : (
