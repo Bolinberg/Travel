@@ -351,3 +351,42 @@ export function createGrandTrip(): Trip {
     ],
   };
 }
+
+/* ------------------------------------------------------------------
+ * 7 天往返（默认）：第 1 天直接开到甘比尔山住蓝湖边，第 2 天直达阿德莱德。
+ * 车程（OSRM）：5.7 / 5.4 / 步行 / 3.3 / 4.8 / 4.9 / 4.5 小时——前两天超过 5 小时，是家里选择的取舍。
+ * 不经过大洋路、Robe、库隆。
+ * ------------------------------------------------------------------ */
+
+export const SEVEN_NAME = '墨尔本 → 蓝湖 → 阿德莱德 → 袋鼠岛 → 墨尔本 7 天';
+
+export function createSevenDayTrip(): Trip {
+  const grand = createGrandTrip();
+  const clone = (d: Day): Day => ({ ...structuredClone(d), id: newId() });
+
+  const toBlueLake = day(
+    '墨尔本 → 甘比尔山 · 住蓝湖边', 'Melbourne VIC', 'Mount Gambier SA', 422, 5.7,
+    ['Blue Lake, Mount Gambier SA', 'Umpherston Sinkhole SA'],
+    stay('Mount Gambier 住宿（蓝湖边）', 200),
+    '全程约 5.7 小时，走 Western Fwy → Ballarat → Glenelg Hwy → Hamilton，在 Ballarat 和 Hamilton 各休息一次。进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）；南澳时间比维州慢 30 分钟。傍晚看蓝湖，天黑后 Umpherston 天坑花园有负鼠出来觅食。',
+    pick('Mount Gambier', 'stay'), pick('Mount Gambier', 'dining', '晚餐'),
+  );
+  const toAdelaide = day(
+    '蓝湖 → 汉多夫 → 阿德莱德', 'Mount Gambier SA', 'Adelaide SA', 437, 5.4,
+    ['Hahndorf SA'],
+    stay('Adelaide 住宿（第 1 晚）', 380),
+    '约 5.4 小时，经 Naracoorte、Keith、Tailem Bend，中途休息两次。早上可再看一眼蓝湖；Hahndorf 德国村晚餐后进城。',
+    pick('Adelaide', 'stay'), pick('Hahndorf', 'dining', '晚餐'),
+  );
+
+  const [, , , city, toKI, backFromKI, homeA, homeB] = grand.days.map(clone);
+  city.notes =
+    '全天步行（12/13 是周日）：9:30 动物园开门先看熊猫 → 穿过植物园（午餐）→ 北台地的南澳博物馆、美术馆（每天 10:00–17:00）。州立图书馆周末开放时间没能确认，去之前查一下；中央市场周日不开。傍晚可坐电车去 Glenelg 看日落。天气 36°C 以上植物园温室会提前关。';
+
+  const days = [toBlueLake, toAdelaide, city, toKI, backFromKI, homeA, homeB];
+  // 开销跟着新的日期 id
+  const idMap = new Map(grand.days.map((d, i) => [d.id, ([null, null, null, city, toKI, backFromKI, homeA, homeB] as (Day | null)[])[i]?.id ?? null]));
+  const expenses = grand.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? idMap.get(e.dayId) ?? null : null }));
+
+  return { ...grand, id: newId(), name: SEVEN_NAME, budget: 6500, days, expenses };
+}

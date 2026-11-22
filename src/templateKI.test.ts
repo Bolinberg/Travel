@@ -66,3 +66,22 @@ describe('8-day grand round trip', () => {
     for (const e of linked) expect(t.days.some((d) => d.id === e.dayId)).toBe(true);
   });
 });
+
+import { createSevenDayTrip } from './templateKI';
+
+describe('7-day Blue Lake round trip', () => {
+  const t = createSevenDayTrip();
+  it('drives straight to Blue Lake then Adelaide, and keeps everything else', () => {
+    expect(t.days).toHaveLength(7);
+    expect(t.days[0].to).toBe('Mount Gambier SA');
+    expect(t.days[0].stops).toContain('Blue Lake, Mount Gambier SA');
+    expect(t.days[1].to).toBe('Adelaide SA');
+    expect(t.days[6].to).toBe('Melbourne VIC');
+    expect(t.days.flatMap((d) => d.stops)).toEqual(expect.arrayContaining(['Adelaide Zoo SA', 'South Australian Museum SA', 'Seal Bay Conservation Park SA']));
+    expect(t.days.filter((d) => d.to === 'Adelaide SA' && d.accommodation).length).toBe(3);
+    expect(new Set(t.days.map((d) => d.id)).size).toBe(7);
+    for (const d of t.days) for (const n of [d.from, d.to, ...d.stops]) expect(findPlace(t, n), n).toBeDefined();
+    for (const e of t.expenses) if (e.dayId) expect(t.days.some((d) => d.id === e.dayId)).toBe(true);
+    expect(t.expenses.filter((e) => e.dayId).length).toBeGreaterThan(3);
+  });
+});
