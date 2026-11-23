@@ -8,6 +8,7 @@ import type { ParsedBooking } from './bookingParse';
 import type { ParsedDining } from './diningParse';
 import type { ParsedTicket } from './ticketParse';
 import type { ParsedExpense } from './expenseParse';
+import type { ParsedItem } from './checklistParse';
 
 /*
  * AI 推荐：在浏览器里直接调用 Claude（Anthropic API），
@@ -760,4 +761,24 @@ export async function aiParseExpenses(text: string, year: number): Promise<Parse
       category: cats.includes(it.category as Category) ? (it.category as Category) : 'other',
     }))
     .filter((e) => e.amount > 0);
+}
+
+const CHECKLIST_PROMPT = `下面是用户为一次家庭自驾游复制来的一段文字（行李清单、备忘、聊天记录等）。把其中要做的事 / 要带的东西整理成一条条清单项：去掉序号和符号，一样东西或一件事一条，说明性的长段落和无关内容不要。
+每条放进最合适的分组，优先用这些已有分组：{GROUPS}；实在都不合适再用新的简短分组名。
+已经完成的（打了勾、划掉、写了已完成）done 为 true。
+只回复一个 JSON 对象，不要其他文字：
+{"items":[{"text":"清单项","group":"分组","done":false}]}`;
+
+/** 让 Claude 整理粘贴的清单 */
+export async function aiParseChecklist(text: string, groups: string[]): Promise<ParsedItem[] | null> {
+  const o = await askJson(`${CHECKLIST_PROMPT.replace('{GROUPS}', groups.join('、'))}\n\n<pasted>\n${text.slice(0, 6000)}\n</pasted>`);
+  const items = o && Array.isArray(o.items) ? (o.items as Record<string, unknown>[]) : null;
+  if (!items) return null;
+  return items
+    .map((it) => ({
+      text: typeof it.text === 'string' ? it.text.trim().slice(0, 120) : '',
+      group: typeof it.group === 'string' && it.group.trim() ? it.group.trim().slice(0, 16) : groups[0] ?? '其他',
+      done: it.done === true,
+    }))
+    .filter((x) => x.text.length >= 2);
 }

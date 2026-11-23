@@ -4,7 +4,7 @@ import { addDays, formatDate, fuelCost, money, summarize } from './calc';
 import { createBlankTrip, createDefaultTrip, duplicateTrip, TEMPLATES } from './defaultTrip';
 import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './storage';
 import { newId } from './id';
-import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings } from './ai';
+import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings, type AiSettings, aiParseChecklist } from './ai';
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
 import { AskBar, PlansPage } from './Planner';
@@ -14,6 +14,7 @@ import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from 
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, routeKey } from './autoRoute';
 import StayPicker, { DiningPicker } from './StayPicker';
+import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -1738,12 +1739,82 @@ function Checklist({ trip, update }: { trip: Trip; update: Update }) {
 
   const add = () => {
     if (!text.trim()) return;
+    if (importText(text)) return;
     update((t) => void t.checklist.push({ id: newId(), text: text.trim(), group: group.trim() || '其他', done: false }));
     setText('');
   };
 
+  // 粘贴整段：拆成一条条、分组、去掉已有的；能用 Claude 时再整理一遍
+  const [pasteText, setPasteText] = useState('');
+  const [msg, setMsg] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const importText = (raw: string): boolean => {
+    if (!raw.includes('\n') && !/[、；;]/.test(raw) && raw.length < 40) return false;
+    const knownGroups = groups.length ? groups : ['出发前', '行李', '路上注意'];
+    const write = (items: ParsedItem[], ids: string[]) => {
+      const existing = trip.checklist.filter((c) => !ids.includes(c.id));
+      const fresh: ParsedItem[] = [];
+      const skipped: string[] = [];
+      const ticked: string[] = []; // 粘贴里打了勾、和已有条目重复的：把已有的也勾上
+      for (const it of items) {
+        const at = findDuplicate(it.text, existing.map((c) => c.text));
+        if (at >= 0) {
+          skipped.push(it.text);
+          if (it.done && !existing[at].done) ticked.push(existing[at].id);
+        } else if (isDuplicate(it.text, fresh.map((f) => f.text))) skipped.push(it.text);
+        else fresh.push(it);
+      }
+      update((t) => {
+        t.checklist = t.checklist.filter((c) => !ids.includes(c.id));
+        for (const c of t.checklist) if (ticked.includes(c.id)) c.done = true;
+        fresh.forEach((f, k) => t.checklist.push({ id: ids[k], text: f.text, group: f.group, done: f.done }));
+      });
+      const byGroup = new Map<string, number>();
+      fresh.forEach((f) => byGroup.set(f.group, (byGroup.get(f.group) ?? 0) + 1));
+      return `加了 ${fresh.length} 项${fresh.length ? `：${[...byGroup].map(([g, n]) => `${g} ${n}`).join('、')}` : ''}${
+        skipped.length ? `；跳过 ${skipped.length} 项已有的（${skipped.slice(0, 4).join('、')}${skipped.length > 4 ? ' 等' : ''}）` : ''
+      }${ticked.length ? `；其中 ${ticked.length} 项你已经做完了，已勾上` : ''}`;
+    };
+    const items = parseChecklistText(raw, knownGroups);
+    if (!items.length) {
+      setMsg('没认出清单项。每行一项，或用顿号隔开就行。');
+      return true;
+    }
+    const ids = Array.from({ length: 200 }, () => newId());
+    setMsg(write(items, ids));
+    setText('');
+    setPasteText('');
+    setAiBusy(true);
+    aiParseChecklist(raw, knownGroups).then((ai) => {
+      setAiBusy(false);
+      if (!ai?.length) return;
+      const same = ai.length === items.length && ai.every((x, k) => x.text === items[k].text && x.group === items[k].group);
+      if (same) return setMsg((m) => `${m}（Claude 已核对）`);
+      setMsg(`${write(ai, ids)}（Claude 整理过）`);
+    });
+    return true;
+  };
+
   return (
     <>
+      <section className="paste-box" aria-labelledby="cl-paste">
+        <div id="cl-paste" className="find-head">有现成的清单？整段粘贴到这里，自动拆成一条条、分好组</div>
+        <textarea
+          aria-label="粘贴清单"
+          rows={2}
+          placeholder="行李清单、备忘录、聊天里的待办都行：自动去掉序号符号，按「行李 / 出发前 / 路上注意 / 阿德莱德 / 袋鼠岛」分组，已有的不重复加，打了勾的算已完成。"
+          value={pasteText}
+          onPaste={(e) => {
+            if (importText(e.clipboardData.getData('text'))) e.preventDefault();
+          }}
+          onChange={(e) => setPasteText(e.target.value)}
+        />
+        {pasteText.trim() && (
+          <button className="primary" onClick={() => importText(pasteText) || setMsg('内容太少了，直接在下面「新增事项」里加就好。')}>整理并加入</button>
+        )}
+        {aiBusy && <p className="small muted">Claude 正在整理…</p>}
+        {msg && <p className="small sp-added">{msg}</p>}
+      </section>
       {groups.map((g) => {
         const items = trip.checklist.filter((c) => c.group === g);
         return (
@@ -1780,8 +1851,11 @@ function Checklist({ trip, update }: { trip: Trip; update: Update }) {
       })}
       <section className="card form add">
         <input
-          placeholder="新增事项"
+          placeholder="新增事项（也可以粘贴一整段清单）"
           value={text}
+          onPaste={(e) => {
+            if (importText(e.clipboardData.getData('text'))) e.preventDefault();
+          }}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
