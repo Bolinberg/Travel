@@ -195,7 +195,7 @@ describe('方案 D：按家里的需求定制', () => {
   it('只有一天超过 6 小时；必去的都在', () => {
     expect(d.days.filter((x) => x.driveHours > 6)).toHaveLength(1);
     const all = d.days.flatMap((x) => [x.to, ...x.stops]);
-    for (const p of ['Twelve Apostles VIC', 'Blue Lake, Mount Gambier SA', 'Adelaide Zoo SA', 'South Australian Museum SA']) expect(all).toContain(p);
+    for (const p of ['Loch Ard Gorge VIC', 'Blue Lake, Mount Gambier SA', 'Adelaide Zoo SA', 'South Australian Museum SA']) expect(all).toContain(p);
     expect(d.days.filter((x) => x.to === 'Vivonne Bay SA' && x.accommodation)).toHaveLength(2);
     expect(d.days.filter((x) => x.to === 'Halls Gap VIC' && x.accommodation)).toHaveLength(2);
     expect(d.days.filter((x) => x.to === 'Adelaide SA' && x.accommodation)).toHaveLength(2);
@@ -220,12 +220,27 @@ describe('方案 D：按家里的需求定制', () => {
   });
 });
 
-describe('2026 年 11 月核实到的景点变化', () => {
-  it('清单和「要订的」里有十二门徒岩预约；重复升级不重复加', () => {
-    const t = createRouteComparisonTrip();
-    expect(t.checklist.some((c) => c.text.includes('十二门徒岩'))).toBe(true);
-    expect(t.expenses.filter((e) => e.title.includes('十二门徒岩'))).toHaveLength(1);
-    const again = upgradeComparison(t);
-    expect(again).toBe(t);
+describe('2026 年 11 月核实后的 D（第二版）', () => {
+  const t = createRouteComparisonTrip();
+  it('不进十二门徒岩预约区，也就不提醒预约；改看野生动物园和 Halls Gap 动物园', () => {
+    const stops = t.days.flatMap((d) => d.stops);
+    expect(stops).not.toContain('Twelve Apostles VIC');
+    expect(stops).not.toContain('MacKenzie Falls VIC');
+    expect(stops).toContain('Kangaroo Island Wildlife Park SA');
+    expect(stops).toContain('Halls Gap Zoo VIC');
+    expect(t.checklist.some((c) => c.text.includes('预约十二门徒岩'))).toBe(false);
+    expect(t.expenses.some((e) => e.title.includes('十二门徒岩'))).toBe(false);
+    expect(upgradeComparison(t)).toBe(t);
+  });
+  it('已经在用旧版 D 的设备会按第二版调整一次', () => {
+    const old = structuredClone(t);
+    const d8 = old.days.find((d) => d.stops.includes('Halls Gap Zoo VIC'))!;
+    d8.stops = ['The Pinnacle Lookout, Grampians VIC', 'MacKenzie Falls VIC'];
+    old.days[0].stops.push('Twelve Apostles VIC');
+    old.expenses.push({ id: 'x', title: '预约十二门徒岩到访时段', category: 'activity', amount: 0, dayId: old.days[0].id, paid: false });
+    const up = upgradeComparison(old);
+    expect(up.days[0].stops).not.toContain('Twelve Apostles VIC');
+    expect(up.days.flatMap((d) => d.stops)).toContain('Halls Gap Zoo VIC');
+    expect(up.expenses.some((e) => e.title.includes('十二门徒岩'))).toBe(false);
   });
 });

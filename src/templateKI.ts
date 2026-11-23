@@ -673,6 +673,7 @@ export function createRouteComparisonTrip(): Trip {
     'Halls Gap VIC': 'Halls Gap Valley Lodges',
   };
   for (const x of dTrip.days) if (kitchen[x.to]) choose(x, kitchen[x.to]);
+  reviseD(dTrip);
 
   const snapA = snapshot(a);
   const snapB = snapshot(b);
@@ -698,23 +699,88 @@ export function createRouteComparisonTrip(): Trip {
  * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
  */
 export function upgradeComparison(trip: Trip): Trip {
-  return addAlerts(addPlanD(addPlanC(upgradeA(trip))));
+  return addAlerts(reviseDOnDevice(addPlanD(addPlanC(upgradeA(trip)))));
 }
 
 /** 2026 年 11 月核实到的景点变化：加进准备清单（每条只加一次） */
-export const ALERTS: { group: string; text: string }[] = [
+export const ALERTS: { group: string; text: string; when: string }[] = [
   {
+    when: 'Twelve Apostles VIC',
     group: '出发前',
     text: '预约十二门徒岩到访时段：2026/10/16 新游客中心启用后，进入观景区要提前在线预约（Great Ocean Road Authority 网站），停车后步行约 1 km 到观景台',
   },
   {
+    when: 'MacKenzie Falls VIC',
     group: '路上注意',
     text: 'MacKenzie Falls 瀑布 2026 年在改建，瀑布底部步道曾关闭；出发前查 Parks Victoria「Change of Conditions」，关闭的话改去 The Balconies 或 Silverband Falls',
   },
 ];
+/*
+ * D 的第二版（2026/11 按核实结果调整）：
+ * - 十二门徒岩不进预约区，大洋路沿途看风景（Loch Ard Gorge、伦敦拱门观景台不用预约）
+ * - 海狮湾沙滩暂停：只走木栈道；离岛那天早上加袋鼠岛野生动物园（喂袋鼠、抱考拉）
+ * - MacKenzie Falls 改建：格兰扁那天改为 The Balconies + Halls Gap 动物园
+ */
+const D_PLACES: Place[] = [
+  { name: 'Kangaroo Island Wildlife Park SA', label: '袋鼠岛野生动物园', lat: -35.7835, lng: 137.2312, desc: '岛中部 Parndana 附近（有消息说已搬到海狮湾附近，出发前查官网地址）。可以喂袋鼠、抱考拉，150 多种澳洲动物，每天 9:30–17:00。' },
+  { name: 'The Balconies, Grampians VIC', label: 'The Balconies 观景台', lat: -37.1256, lng: 142.4583, desc: '格兰扁最经典的悬崖观景台，从 Reed Lookout 停车场走平路往返约 2 km，孩子轻松。' },
+  { name: 'Halls Gap Zoo VIC', label: 'Halls Gap 动物园', lat: -37.1735, lng: 142.5268, desc: '镇南几公里的家庭动物园，有犀牛、长颈鹿和很多澳洲动物，每天 10:00–17:00；下午 2:30 犀牛见面会。' },
+];
+const APOSTLES_ALERT = ALERTS[0].text;
+
+export function reviseD(t: Trip): boolean {
+  if (t.days.some((d) => d.stops.includes('Halls Gap Zoo VIC'))) return false;
+  const d1 = t.days.find((d) => d.to === 'Mount Gambier SA' && d.stops.includes('Twelve Apostles VIC'));
+  const d4 = t.days.find((d) => d.to === 'Vivonne Bay SA' && d.stops.includes('Seal Bay Conservation Park SA'));
+  const d6 = t.days.find((d) => d.from === 'Vivonne Bay SA' && d.to === 'Tailem Bend SA');
+  const d8 = t.days.find((d) => d.from === 'Halls Gap VIC' && d.to === 'Halls Gap VIC');
+  if (!d1 || !d4 || !d6 || !d8) return false;
+  for (const p of D_PLACES) if (!t.places.some((x) => x.name === p.name)) t.places.push(p);
+
+  d1.title = '大洋路沿途看风景 → 甘比尔山 · 住蓝湖';
+  d1.stops = d1.stops.filter((x) => x !== 'Twelve Apostles VIC');
+  d1.notes =
+    '全程唯一的长途日，纯开车约 7.9 小时。不进十二门徒岩预约区，沿大洋路看风景：Torquay、Split Point 灯塔、Lorne（午餐）、Apollo Bay 之后是 Otway 雨林弯道；海岸段停 Loch Ard Gorge 和伦敦拱门的观景台（不用预约，Loch Ard 下沙滩的路因悬崖滑动暂时关闭），十二门徒岩从路边远远看一眼即可。少停一个大景点，大约傍晚 5–6 点（南澳时间）到甘比尔山，天黑前还能去看蓝湖。进入南澳前处理掉新鲜水果蔬菜；南澳慢 30 分钟。';
+  d4.notes = `${d4.notes} 海狮湾 2026 年 8 月起因禽流感预防暂停下沙滩，只能在木栈道上看海狮（有讲解员，仍能看到沙滩上的海狮）；出发前一周查 Parks SA 公告。`;
+  d6.title = '野生动物园 → 渡轮 → Tailem Bend';
+  d6.stops = ['Kangaroo Island Wildlife Park SA', ...d6.stops.filter((x) => x !== 'Kangaroo Island Wildlife Park SA')];
+  d6.km = 309;
+  d6.driveHours = 4.5; // 按真实道路，含绕去野生动物园（约多 40 分钟）
+  d6.notes =
+    '早上去袋鼠岛野生动物园（9:30 开门，喂袋鼠、抱考拉，孩子最喜欢，约 1.5 小时；出发前查官网确认地址），Kingscote 午餐吃海鲜，Penneshaw 坐下午的渡轮（开船前 30 分钟到码头），回大陆后往东开到 Tailem Bend 过夜。';
+  d8.title = '格兰扁一整天：Pinnacle · The Balconies · 动物园';
+  d8.stops = ['The Pinnacle Lookout, Grampians VIC', 'The Balconies, Grampians VIC', 'Halls Gap Zoo VIC'];
+  d8.notes =
+    '12/19 周六，不赶路：上午从 Sundial 停车场走 Pinnacle 步道（往返约 4 km，约 2 小时）；回程顺路到 Reed Lookout 停车场，平路走到 The Balconies 悬崖观景台（往返 2 km）。午饭后去 Halls Gap 动物园（每天 10:00–17:00，2:30 有犀牛见面会）。MacKenzie Falls 在改建，这次不去。傍晚镇中心草地看袋鼠。夏天高温或山火警告时步道可能关闭，出发前看 Parks Victoria。';
+
+  t.expenses = t.expenses.filter((e) => !/十二门徒岩/.test(e.title));
+  for (const e of t.expenses) {
+    if (/^海狮湾/.test(e.title)) e.title = '海狮湾门票（沙滩暂停开放，只走木栈道；价格以现场为准）';
+  }
+  t.expenses.push(
+    { id: newId(), title: '袋鼠岛野生动物园家庭票（约 $100，以官网为准）', category: 'activity', amount: 100, dayId: d6.id, paid: false, url: 'https://www.kiwildlifepark.com' },
+    { id: newId(), title: 'Halls Gap 动物园家庭票（约 $100，2 大 2 小）', category: 'activity', amount: 100, dayId: d8.id, paid: false, url: 'https://hallsgapzoo.com.au/shop/entry-tickets' },
+  );
+  t.checklist = t.checklist.filter((c) => c.text !== APOSTLES_ALERT && !c.text.startsWith('MacKenzie Falls 瀑布 2026'));
+  return true;
+}
+
+/** 已经在用 D 的设备：D 方案和当前内容都按第二版调整（只调整一次） */
+function reviseDOnDevice(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME) return trip;
+  const v = trip.versions?.find((x) => x.label === COMPARE_D);
+  if (!v) return trip;
+  const t = structuredClone(trip);
+  const vv = t.versions!.find((x) => x.id === v.id)!;
+  const changedSnap = reviseD(vv.snapshot);
+  const changedNow = t.activePlan === v.id ? reviseD(t) : false;
+  return changedSnap || changedNow ? t : trip;
+}
+
 function addAlerts(trip: Trip): Trip {
   if (trip.name !== COMPARE_NAME) return trip;
-  const missing = ALERTS.filter((a) => !trip.checklist.some((c) => c.text === a.text));
+  const visits = new Set(trip.days.flatMap((d) => d.stops));
+  const missing = ALERTS.filter((a) => visits.has(a.when) && !trip.checklist.some((c) => c.text === a.text));
   const apostlesDay = trip.days.find((d) => d.stops.includes('Twelve Apostles VIC'));
   const needBooking = !!apostlesDay && !trip.expenses.some((e) => /十二门徒岩/.test(e.title));
   if (!missing.length && !needBooking) return trip;
