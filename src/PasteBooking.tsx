@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import type { Rec, Trip } from './types';
+import type { Expense, Rec, Trip } from './types';
 import { addDays, formatDate, money } from './calc';
 import { newId } from './id';
-import { aiParseBooking, aiParseDining } from './ai';
+import { aiParseBooking, aiParseDining, aiParseTicket } from './ai';
+import { KNOWN_TICKETS, looksLikeTicket, parseTicketText, type ParsedTicket } from './ticketParse';
 import { looksLikeDining, parseDiningText, type ParsedDining } from './diningParse';
 import { looksLikeBookingText, parseBookingText, type ParsedBooking } from './bookingParse';
 import { nameFromUrl, platformOf } from './search';
 import { stayGroups } from './Bookings';
-import { short } from './ui';
+import { short, shortTitle } from './ui';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -251,26 +252,132 @@ export function usePasteDining(trip: Trip, update: Update) {
   return { handle, message, warn, busy };
 }
 
-/** 「预订」页顶部：粘贴任何一份住宿预订确认或餐厅订位，自动对上是哪一天 */
+/* ---------------- 门票 / 渡轮 ---------------- */
+
+/** 找「要订的」里对应的那一项：先按认识的景点关键词，再按标题相似 */
+export function matchExpense(t: Trip, p: ParsedTicket, targetId?: string): Expense | undefined {
+  if (targetId) return t.expenses.find((e) => e.id === targetId);
+  const known = KNOWN_TICKETS.find((k) => k.title === p.title);
+  const pool = t.expenses.filter((e) => !e.quick && (e.category === 'transport' || e.category === 'activity'));
+  if (known) return pool.find((e) => known.match.test(e.title));
+  const key = p.title.toLowerCase().split(/\s+/).find((w) => w.length > 3);
+  return key ? pool.find((e) => e.title.toLowerCase().includes(key)) : undefined;
+}
+
+/** 写进「要订的」：实付金额、已订（已付）、确认号和时间；没有对应项目就新建一项 */
+export function applyParsedTicket(t: Trip, p: ParsedTicket, targetId?: string, newIdValue = newId()): { title: string; created: boolean } {
+  let e = matchExpense(t, p, targetId);
+  const created = !e;
+  const dayIdx = p.date ? t.days.findIndex((_, k) => addDays(t.startDate, k) === p.date) : -1;
+  if (!e) {
+    e = {
+      id: newIdValue,
+      title: p.title,
+      category: p.kind === 'ferry' ? 'transport' : 'activity',
+      amount: 0,
+      dayId: dayIdx >= 0 ? t.days[dayIdx].id : null,
+      paid: false,
+    };
+    t.expenses.push(e);
+  }
+  if (p.total) e.amount = p.total;
+  if (p.confirmed || p.paid) e.booked = true;
+  if (p.paid) e.paid = true;
+  if (dayIdx >= 0 && !e.dayId) e.dayId = t.days[dayIdx].id;
+  if (p.url && !e.url) e.url = p.url;
+  e.note = [
+    p.confirmation && `确认号 ${p.confirmation}`,
+    p.times,
+    p.returnDate && !p.times.includes('回程') && `回程 ${formatDate(p.returnDate)}`,
+    p.people,
+    p.vehicle,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return { title: e.title, created };
+}
+
+function ticketSummary(p: ParsedTicket, title: string, created: boolean): string {
+  const bits = [
+    `「${shortTitle(title)}」`,
+    p.date && `${formatDate(p.date)}${p.returnDate ? ` – ${formatDate(p.returnDate)}` : ''}`,
+    p.total ? `实付 ${money(p.total)}` : '没认出金额，金额先不变',
+    p.confirmation && `确认号 ${p.confirmation}`,
+  ].filter(Boolean);
+  return `${bits.join(' · ')} → ${created ? '新加了一项，' : ''}已标记${p.paid ? '已付' : '已订'}`;
+}
+
+/** 粘贴门票 / 渡轮确认：对上「要订的」里那一项（或指定的 targetId），标记已订并填实付 */
+export function usePasteTicket(trip: Trip, update: Update) {
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const handle = (text: string, targetId?: string): boolean => {
+    if (!looksLikeBookingText(text)) return false;
+    const year = Number(trip.startDate.slice(0, 4)) || new Date().getFullYear();
+    const p = parseTicketText(text, year);
+    const id = newId();
+    let res = { title: p.title, created: false };
+    update((t) => void (res = applyParsedTicket(t, p, targetId, id)));
+    const preview = structuredClone(trip);
+    res = applyParsedTicket(preview, p, targetId, id);
+    setMessage(ticketSummary(p, res.title, res.created));
+    setBusy(true);
+    aiParseTicket(text, year).then((ai) => {
+      setBusy(false);
+      if (!ai) return;
+      const merged: ParsedTicket = {
+        ...p,
+        ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v !== '' && v !== 0 && v !== undefined)),
+        title: p.title,
+        kind: p.kind,
+        paid: p.paid || !!ai.paid,
+        confirmed: p.confirmed || !!ai.confirmed,
+        url: p.url,
+      };
+      const changed = (['date', 'total', 'confirmation', 'people'] as const).filter((k) => merged[k] !== p[k]);
+      if (!changed.length) {
+        setMessage((m) => `${m}（Claude 已核对）`);
+        return;
+      }
+      const tid = targetId ?? (res.created ? id : undefined);
+      update((t) => void applyParsedTicket(t, merged, tid ?? matchExpense(t, p)?.id, id));
+      setMessage(`${ticketSummary(merged, res.title, res.created)}（Claude 核对后更正了 ${changed.length} 处）`);
+    });
+    return true;
+  };
+  return { handle, message, warn: '', busy };
+}
+
+/** 判断粘贴的是哪一类：住宿 / 门票渡轮 / 餐厅 */
+export function classifyPaste(text: string): 'stay' | 'ticket' | 'meal' {
+  if (/check[- ]?in|check[- ]?out|入住|退房|\bnights?\b/i.test(text)) return 'stay';
+  if (looksLikeTicket(text)) return 'ticket';
+  if (looksLikeDining(text)) return 'meal';
+  return 'stay';
+}
+
+/** 「预订」页顶部：粘贴任何一份确认（住宿、门票渡轮、餐厅），自动分类、对上是哪一天 */
 export function PasteBookingBox({ trip, update }: { trip: Trip; update: Update }) {
   const [text, setText] = useState('');
   const stay = usePasteBooking(trip, update);
   const meal = usePasteDining(trip, update);
-  const [last, setLast] = useState<'stay' | 'meal'>('stay');
-  const { message, warn, busy } = last === 'stay' ? stay : meal;
+  const ticket = usePasteTicket(trip, update);
+  const [last, setLast] = useState<'stay' | 'meal' | 'ticket'>('stay');
+  const { message, warn, busy } = last === 'stay' ? stay : last === 'meal' ? meal : ticket;
   const go = (v: string) => {
-    const kind = looksLikeDining(v) ? 'meal' : 'stay';
+    const kind = classifyPaste(v);
     setLast(kind);
-    if ((kind === 'meal' ? meal : stay).handle(v)) setText('');
+    const h = kind === 'meal' ? meal : kind === 'ticket' ? ticket : stay;
+    if (h.handle(v)) setText('');
     else setText(v);
   };
   return (
     <section className="paste-box" aria-labelledby="paste-head">
-      <div id="paste-head" className="find-head">订好了？把确认邮件或订单页面的文字整段粘贴到这里（住宿、餐厅都行）</div>
+      <div id="paste-head" className="find-head">订好了？把确认邮件或订单页面的文字整段粘贴到这里（住宿、门票、渡轮、餐厅都行）</div>
       <textarea
         aria-label="粘贴预订确认"
         rows={2}
-        placeholder="从 Booking / Airbnb / 携程 / OpenTable / 官网 的确认邮件里全选复制，粘贴进来。会自动认出名称、日期、价格和确认号，对上是哪一天并标记已订。"
+        placeholder="从 Booking / Airbnb / SeaLink / 动物园 / OpenTable 等的确认邮件里全选复制，粘贴进来。会自动认出是什么、哪天、多少钱和确认号，对上「要订的」那一项并标记已订。"
         value={text}
         onPaste={(e) => {
           e.preventDefault();

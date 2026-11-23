@@ -106,6 +106,8 @@ export interface Expense {
   url?: string;
   /** 随手记的一笔（不用提前订，不进「要订的」） */
   quick?: boolean;
+  /** 预订详情：确认号、时间、人数等 */
+  note?: string;
 }
 
 export interface ChecklistItem {

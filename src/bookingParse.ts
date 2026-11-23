@@ -39,7 +39,8 @@ export function findDates(text: string, defaultYear: number): { date: string; in
   const r3 = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?,?\s*(20\d{2})?/gi;
   while ((m = r3.exec(text))) add(iso(m[3] ? +m[3] : defaultYear, MONTHS[m[2].toLowerCase()], +m[1]), m.index);
   // December 12, 2026 / Dec 12
-  const r4 = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(20\d{2})?/gi;
+  // 日子后面不能紧跟数字，免得把「Dec 2026」认成 12 月 20 日
+  const r4 = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?!\d)(?:st|nd|rd|th)?,?\s*(20\d{2})?/gi;
   while ((m = r4.exec(text))) add(iso(m[3] ? +m[3] : defaultYear, MONTHS[m[1].toLowerCase()], +m[2]), m.index);
   // 2026年12月12日 / 12月12日
   const r5 = /(?:(20\d{2})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日/g;

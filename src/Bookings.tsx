@@ -6,7 +6,7 @@ import { newId } from './id';
 import { short, shortTitle } from './ui';
 import { extractUrl, nameFromUrl, platformOf } from './search';
 import StayPicker from './StayPicker';
-import { PasteBookingBox } from './PasteBooking';
+import { PasteBookingBox, usePasteBooking, usePasteTicket } from './PasteBooking';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -90,30 +90,47 @@ function BookedInline({
   hint,
   onConfirm,
   onCancel,
+  onPasteText,
 }: {
   amount: number;
   hint: string;
   onConfirm: (total: number) => void;
   onCancel: () => void;
+  /** 粘贴整段确认：识别成功返回 true */
+  onPasteText?: (text: string) => boolean;
 }) {
   const [v, setV] = useState(0);
   const ok = () => onConfirm(v || amount);
   return (
-    <div className="sp-pay bk-pay">
-      <label className="small">
-        实付总价（{hint}）
-        <input
-          type="number"
-          inputMode="decimal"
-          autoFocus
-          placeholder={String(amount)}
-          value={v || ''}
-          onChange={(e) => setV(Number(e.target.value) || 0)}
-          onKeyDown={(e) => e.key === 'Enter' && ok()}
+    <div className="bk-pay-wrap">
+      <div className="sp-pay bk-pay">
+        <label className="small">
+          实付总价（{hint}）
+          <input
+            type="number"
+            inputMode="decimal"
+            autoFocus
+            placeholder={String(amount)}
+            value={v || ''}
+            onChange={(e) => setV(Number(e.target.value) || 0)}
+            onKeyDown={(e) => e.key === 'Enter' && ok()}
+          />
+        </label>
+        <button className="mini on" onClick={ok}>确认</button>
+        <button className="mini" onClick={onCancel}>取消</button>
+      </div>
+      {onPasteText && (
+        <textarea
+          className="bk-pay-paste"
+          aria-label="粘贴这一项的确认"
+          rows={1}
+          placeholder="或者把确认邮件整段粘贴到这里，自动填好金额和确认号"
+          onPaste={(e) => {
+            const text = e.clipboardData.getData('text');
+            if (onPasteText(text)) e.preventDefault();
+          }}
         />
-      </label>
-      <button className="mini on" onClick={ok}>确认</button>
-      <button className="mini" onClick={onCancel}>取消</button>
+      )}
     </div>
   );
 }
@@ -145,6 +162,10 @@ type Item = {
 export default function Bookings({ trip, update }: { trip: Trip; update: Update }) {
   const s = useMemo(() => summarize(trip), [trip]);
   const [paying, setPaying] = useState<string | null>(null);
+  // 在某一行里粘贴确认后，在那一行下面显示识别结果
+  const ticketPaste = usePasteTicket(trip, update);
+  const stayPaste = usePasteBooking(trip, update);
+  const [pasted, setPasted] = useState<string | null>(null);
   const [openStay, setOpenStay] = useState<number | null>(null);
   const [quick, setQuick] = useState('');
   const [quickDay, setQuickDay] = useState('');
@@ -200,7 +221,7 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
       key: e.id,
       kind: 'ticket',
       title: shortTitle(e.title),
-      sub: [i >= 0 ? `第 ${i + 1} 天 · ${formatDate(addDays(trip.startDate, i))}` : CATEGORY_LABELS[e.category], detail].filter(Boolean).join(' · '),
+      sub: [i >= 0 ? `第 ${i + 1} 天 · ${formatDate(addDays(trip.startDate, i))}` : CATEGORY_LABELS[e.category], e.note || detail].filter(Boolean).join(' · '),
       amount: e.amount || 0,
       link: e.url ?? null,
       booked: !!(e.booked || e.paid),
@@ -259,6 +280,14 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
               setPaying(null);
             }}
             onCancel={() => setPaying(null)}
+            onPasteText={(text) => {
+              const ok = x.kind === 'ticket' ? ticketPaste.handle(text, x.key) : stayPaste.handle(text, x.dayIndex);
+              if (ok) {
+                setPaying(null);
+                setPasted(x.key);
+              }
+              return ok;
+            }}
           />
         ) : (
           <div className="row wrap gap bk-actions">
@@ -290,6 +319,16 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
             )}
           </div>
         )}
+        {pasted === x.key && (() => {
+          const h = x.kind === 'ticket' ? ticketPaste : stayPaste;
+          return (
+            <>
+              {h.message && <p className="small sp-added">{h.message}</p>}
+              {h.warn && <p className="small warn-text">{h.warn}</p>}
+              {h.busy && <p className="small muted">Claude 正在核对…</p>}
+            </>
+          );
+        })()}
       </div>
       <div className="bk-side">
         <span className="bk-amt">{money(x.amount)}</span>

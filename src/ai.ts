@@ -6,6 +6,7 @@ import { insertStop } from './route';
 import { newId } from './id';
 import type { ParsedBooking } from './bookingParse';
 import type { ParsedDining } from './diningParse';
+import type { ParsedTicket } from './ticketParse';
 
 /*
  * AI 推荐：在浏览器里直接调用 Claude（Anthropic API），
@@ -711,6 +712,28 @@ export async function aiParseDining(text: string, year: number): Promise<Partial
     cuisine: str('cuisine'),
     address: str('address'),
     confirmation: str('confirmation'),
+    confirmed: o.confirmed === true,
+  };
+}
+
+const TICKET_PROMPT = `下面是用户从邮件或网页复制来的一段门票或渡轮预订确认。只根据文字内容提取，不要猜测或编造；没有的字段用空字符串或 0。
+只回复一个 JSON 对象，不要其他文字：
+{"date":"第一个日期（去程 / 入场日）YYYY-MM-DD","returnDate":"往返的回程日期 YYYY-MM-DD，没有就空","people":"人数，如 2 大 2 小 或 家庭票","total":实付总额（澳元）,"confirmation":"订单号/预订号","paid":是否已付款(true/false),"confirmed":是否已确认(true/false)}
+没写年份的日期按 {YEAR} 年。`;
+
+/** 让 Claude 核对门票 / 渡轮识别结果 */
+export async function aiParseTicket(text: string, year: number): Promise<Partial<ParsedTicket> | null> {
+  const o = await askJson(`${TICKET_PROMPT.replace('{YEAR}', String(year))}\n\n<pasted>\n${text.slice(0, 6000)}\n</pasted>`);
+  if (!o || typeof o !== 'object') return null;
+  const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '');
+  const date = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(str(k)) ? str(k) : '');
+  return {
+    date: date('date'),
+    returnDate: date('returnDate'),
+    people: str('people'),
+    total: typeof o.total === 'number' && Number.isFinite(o.total) ? o.total : 0,
+    confirmation: str('confirmation'),
+    paid: o.paid === true,
     confirmed: o.confirmed === true,
   };
 }

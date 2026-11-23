@@ -3400,3 +3400,14 @@ ul.plain.bk-meals > li {
 .sp-note {
   color: var(--sign);
 }
+
+.bk-pay-wrap {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.bk-pay-paste {
+  border: 1.5px dashed var(--sign);
+  font-size: 14px;
+  resize: vertical;
+}
