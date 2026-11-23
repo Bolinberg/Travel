@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diningSearchLinks, extractUrl, isBookingPlatform, nameFromUrl, placeQuery, platformOf, staySearchLinks } from './search';
+import { diningSearchLinks, ticketSearchLinks, extractUrl, isBookingPlatform, nameFromUrl, placeQuery, platformOf, staySearchLinks } from './search';
 
 describe('平台搜索链接', () => {
   it('Booking.com 带日期、人数、小孩年龄，按好评排序并筛 8 分以上', () => {
@@ -45,6 +45,18 @@ describe('平台搜索链接', () => {
     expect(new URL(vic.find((l) => l.key === 'tourism')!.href).searchParams.get('q')).toContain('visitvictoria.com');
     expect(platformOf('https://www.xiaohongshu.com/explore/123')).toBe('小红书');
     expect(platformOf('https://www.goodfood.com.au/x')).toBe('Good Food Guide');
+  });
+  it('门票 / 活动平台', () => {
+    const links = ticketSearchLinks('Kangaroo Island', 'Vivonne Bay SA');
+    const get = (k: string) => new URL(links.find((l) => l.key === k)!.href);
+    expect(get('gyg').searchParams.get('q')).toBe('Kangaroo Island');
+    expect(get('viator').searchParams.get('text')).toBe('Kangaroo Island');
+    expect(get('klook').searchParams.get('q')).toBe('site:klook.com Kangaroo Island');
+    expect(get('parks').hostname).toBe('www.parks.sa.gov.au'); // 南澳的国家公园通票
+    expect(get('club').searchParams.get('q')).toContain('raa.com.au');
+    const vic = ticketSearchLinks('Grampians', 'Halls Gap VIC');
+    expect(new URL(vic.find((l) => l.key === 'club')!.href).searchParams.get('q')).toContain('racv.com.au');
+    expect(platformOf('https://www.getyourguide.com/x')).toBe('GetYourGuide');
   });
   it('餐厅搜索和订位人数', () => {
     const links = diningSearchLinks('Adelaide SA', '2026-12-14', 4);

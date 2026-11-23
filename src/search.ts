@@ -179,12 +179,48 @@ function moreStayLinks(q: StayQuery, where: string, kids: number): SearchLink[] 
   ];
 }
 
+/* ---------------- 门票 / 活动 ---------------- */
+
+/** 门票平台的说明（「更多平台」里显示） */
+export const MORE_TICKET_PLATFORMS: PlatformInfo[] = [
+  { key: 'official', label: '官网', about: '景点官网直接买最稳：价格一样或更便宜，改期退票直接找景点，不经第三方' },
+  { key: 'tripadvisor', label: 'Tripadvisor 玩乐', about: '看当地活动排名和点评，决定去哪个再去订' },
+  { key: 'gyg', label: 'GetYourGuide', about: '大型活动 / 门票平台，大多可提前 24 小时免费取消' },
+  { key: 'viator', label: 'Viator', about: 'Tripadvisor 旗下的活动预订平台，一日游和导览团多，评价和 Tripadvisor 通用' },
+  { key: 'klook', label: 'Klook（客路）', about: '中文界面和客服，门票、一日游、交通卡，常有优惠码' },
+  { key: 'experienceoz', label: 'Experience Oz', about: '澳洲本土的门票平台，动物园、水族馆、游船等常有组合优惠' },
+  { key: 'tripcom', label: 'Trip.com 玩乐', about: '携程国际站的门票 / 一日游，中文客服' },
+  { key: 'parks', label: '国家公园通票', about: 'Parks SA（南澳，含袋鼠岛弗林德斯蔡斯）/ Parks Victoria 官方门票和通票，只在官网买' },
+  { key: 'club', label: 'RAA / RACV 会员折扣', about: '有道路救援会员的话，很多景点、动物园、渡轮有会员价，先查再买' },
+];
+export const DEFAULT_TICKET_PLATFORMS = ['official', 'tripadvisor', 'gyg', 'klook'];
+
+/** 门票 / 活动搜索。query：景点名（英文更准）或地名 */
+export function ticketSearchLinks(query: string, place = ''): SearchLink[] {
+  const where = place ? placeQuery(place) : '';
+  const sa = /South Australia|\bSA\b/.test(where || query);
+  const q = query.trim();
+  const g = (s: string) => 'https://www.google.com/search?' + qs({ q: s });
+  return [
+    { key: 'official', label: '官网', hint: '找官方购票页', href: g(`${q} official tickets`) },
+    { key: 'tripadvisor', label: 'Tripadvisor 玩乐', hint: '活动排名和点评', href: 'https://www.tripadvisor.com.au/Search?' + qs({ q: `things to do ${q}`, ssrc: 'A' }) },
+    { key: 'gyg', label: 'GetYourGuide', hint: '可免费取消的多', href: 'https://www.getyourguide.com/s/?' + qs({ q }) },
+    { key: 'viator', label: 'Viator', hint: '一日游和导览', href: 'https://www.viator.com/searchResults/all?' + qs({ text: q }) },
+    { key: 'klook', label: 'Klook', hint: '中文', href: g(`site:klook.com ${q}`) },
+    { key: 'experienceoz', label: 'Experience Oz', hint: '澳洲本土', href: g(`site:experienceoz.com.au ${q}`) },
+    { key: 'tripcom', label: 'Trip.com 玩乐', hint: '中文客服', href: g(`site:trip.com things to do ${q}`) },
+    { key: 'parks', label: '国家公园通票', hint: '官方', href: sa ? 'https://www.parks.sa.gov.au/park-passes' : g(`site:parks.vic.gov.au ${q}`) },
+    { key: 'club', label: 'RAA / RACV 会员', hint: '会员折扣', href: g(`${sa ? 'site:raa.com.au' : 'site:racv.com.au'} member discount ${q}`) },
+  ];
+}
+
 /** 默认显示的平台（其余在「更多平台」里，可以设为常用） */
 export const DEFAULT_STAY_PLATFORMS = ['booking', 'airbnb', 'wotif', 'tripadvisor', 'google'];
 export const DEFAULT_DINING_PLATFORMS = ['tripadvisor', 'google', 'google-family', 'opentable'];
-const PREF_KEYS = { stay: 'travel-planner.platforms', dining: 'travel-planner.platforms.dining' };
-export function loadPlatformPrefs(kind: 'stay' | 'dining' = 'stay'): string[] {
-  const def = kind === 'stay' ? DEFAULT_STAY_PLATFORMS : DEFAULT_DINING_PLATFORMS;
+const PREF_KEYS = { stay: 'travel-planner.platforms', dining: 'travel-planner.platforms.dining', ticket: 'travel-planner.platforms.ticket' };
+export type PlatformKind = keyof typeof PREF_KEYS;
+export function loadPlatformPrefs(kind: PlatformKind = 'stay'): string[] {
+  const def = kind === 'stay' ? DEFAULT_STAY_PLATFORMS : kind === 'dining' ? DEFAULT_DINING_PLATFORMS : DEFAULT_TICKET_PLATFORMS;
   try {
     const v = JSON.parse(localStorage.getItem(PREF_KEYS[kind]) ?? 'null');
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : def;
@@ -192,7 +228,7 @@ export function loadPlatformPrefs(kind: 'stay' | 'dining' = 'stay'): string[] {
     return def;
   }
 }
-export function savePlatformPrefs(keys: string[], kind: 'stay' | 'dining' = 'stay') {
+export function savePlatformPrefs(keys: string[], kind: PlatformKind = 'stay') {
   try {
     localStorage.setItem(PREF_KEYS[kind], JSON.stringify(keys));
   } catch {
@@ -274,6 +310,12 @@ export function platformOf(url: string): string {
   if (/trip\.com$/.test(host)) return 'Trip.com';
   if (/kayak\./.test(host)) return 'Kayak';
   if (/goodfood\.com\.au$/.test(host)) return 'Good Food Guide';
+  if (/getyourguide\./.test(host)) return 'GetYourGuide';
+  if (/viator\.com$/.test(host)) return 'Viator';
+  if (/klook\.com$/.test(host)) return 'Klook';
+  if (/experienceoz\.com\.au$/.test(host)) return 'Experience Oz';
+  if (/parks\.sa\.gov\.au$/.test(host)) return 'Parks SA';
+  if (/parks\.vic\.gov\.au$/.test(host)) return 'Parks Victoria';
   if (/gourmettraveller\.com\.au$/.test(host)) return 'Gourmet Traveller';
   if (/broadsheet\.com\.au$/.test(host)) return 'Broadsheet';
   if (/quandoo\./.test(host)) return 'Quandoo';

@@ -3438,3 +3438,15 @@ ul.plain.sp-more > li {
   align-items: center;
   padding: 8px 0;
 }
+
+.bk-alt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  align-items: center;
+}
+.bk-alt .link {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+}

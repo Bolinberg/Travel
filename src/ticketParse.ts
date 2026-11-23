@@ -23,15 +23,15 @@ export interface ParsedTicket {
 }
 
 /** 认识的景点 / 交通：标题、类别，以及用来对上「要订的」里已有项目的关键词 */
-export const KNOWN_TICKETS: { re: RegExp; title: string; kind: 'ferry' | 'ticket'; match: RegExp }[] = [
-  { re: /sealink|kangaroo island ferr|ki ferr|cape jervis.*penneshaw|penneshaw.*cape jervis/i, title: 'SeaLink 渡轮往返', kind: 'ferry', match: /sealink|渡轮/i },
-  { re: /halls gap zoo/i, title: 'Halls Gap 动物园家庭票', kind: 'ticket', match: /halls gap 动物园|halls gap zoo/i },
-  { re: /adelaide zoo|zoos sa|giant panda/i, title: '阿德莱德动物园家庭票', kind: 'ticket', match: /阿德莱德动物园|adelaide zoo/i },
-  { re: /seal bay/i, title: '海狮湾门票', kind: 'ticket', match: /海狮湾|seal bay/i },
-  { re: /kangaroo island wildlife park|ki wildlife park/i, title: '袋鼠岛野生动物园家庭票', kind: 'ticket', match: /野生动物园|wildlife park/i },
-  { re: /flinders chase|park pass|parks sa|national parks? (?:entry|pass)/i, title: '弗林德斯蔡斯国家公园门票', kind: 'ticket', match: /国家公园|flinders chase|park pass/i },
-  { re: /little sahara|sandboard/i, title: '小撒哈拉滑沙板租用', kind: 'ticket', match: /滑沙|sandboard|little sahara/i },
-  { re: /sovereign hill/i, title: 'Sovereign Hill 淘金镇门票', kind: 'ticket', match: /sovereign hill/i },
+export const KNOWN_TICKETS: { re: RegExp; title: string; kind: 'ferry' | 'ticket'; match: RegExp; en: string }[] = [
+  { re: /sealink|kangaroo island ferr|ki ferr|cape jervis.*penneshaw|penneshaw.*cape jervis/i, title: 'SeaLink 渡轮往返', kind: 'ferry', match: /sealink|渡轮/i, en: 'SeaLink Kangaroo Island ferry' },
+  { re: /halls gap zoo/i, title: 'Halls Gap 动物园家庭票', kind: 'ticket', match: /halls gap 动物园|halls gap zoo/i, en: 'Halls Gap Zoo' },
+  { re: /adelaide zoo|zoos sa|giant panda/i, title: '阿德莱德动物园家庭票', kind: 'ticket', match: /阿德莱德动物园|adelaide zoo/i, en: 'Adelaide Zoo' },
+  { re: /seal bay/i, title: '海狮湾门票', kind: 'ticket', match: /海狮湾|seal bay/i, en: 'Seal Bay Conservation Park' },
+  { re: /kangaroo island wildlife park|ki wildlife park/i, title: '袋鼠岛野生动物园家庭票', kind: 'ticket', match: /野生动物园|wildlife park/i, en: 'Kangaroo Island Wildlife Park' },
+  { re: /flinders chase|park pass|parks sa|national parks? (?:entry|pass)/i, title: '弗林德斯蔡斯国家公园门票', kind: 'ticket', match: /国家公园|flinders chase|park pass/i, en: 'Flinders Chase National Park' },
+  { re: /little sahara|sandboard/i, title: '小撒哈拉滑沙板租用', kind: 'ticket', match: /滑沙|sandboard|little sahara/i, en: 'Little Sahara sandboarding Kangaroo Island' },
+  { re: /sovereign hill/i, title: 'Sovereign Hill 淘金镇门票', kind: 'ticket', match: /sovereign hill/i, en: 'Sovereign Hill Ballarat' },
 ];
 
 const pad = (n: number) => String(n).padStart(2, '0');

@@ -3,7 +3,7 @@ import type { Rec, Trip } from './types';
 import { addDays, foodStandard, formatDate, money } from './calc';
 import { newId } from './id';
 import { childAges, short } from './ui';
-import { diningSearchLinks, extractUrl, loadPlatformPrefs, MORE_DINING_PLATFORMS, MORE_PLATFORMS, nameFromUrl, platformOf, savePlatformPrefs, staySearchLinks, type PlatformInfo, type SearchLink } from './search';
+import { diningSearchLinks, extractUrl, loadPlatformPrefs, MORE_DINING_PLATFORMS, MORE_PLATFORMS, nameFromUrl, platformOf, savePlatformPrefs, staySearchLinks, type PlatformInfo, type PlatformKind, type SearchLink } from './search';
 import { pickStay, stayGroups, stayLabel } from './Bookings';
 import { usePasteBooking, usePasteDining } from './PasteBooking';
 
@@ -537,7 +537,7 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
 /**
  * 平台按钮：常用的直接显示，其余收在「更多平台」里（附每家的说明），可以设为常用（记在这台设备上）
  */
-function PlatformChips({ links, kind, infos }: { links: SearchLink[]; kind: 'stay' | 'dining'; infos: PlatformInfo[] }) {
+export function PlatformChips({ links, kind, infos }: { links: SearchLink[]; kind: PlatformKind; infos: PlatformInfo[] }) {
   const [favs, setFavs] = useState<string[]>(() => loadPlatformPrefs(kind));
   const [open, setOpen] = useState(false);
   const label = (l: SearchLink) => (l.key === 'google-family' ? '适合带孩子' : l.label);
@@ -570,7 +570,7 @@ function PlatformChips({ links, kind, infos }: { links: SearchLink[]; kind: 'sta
                 <button
                   className={on ? 'mini on' : 'mini'}
                   aria-pressed={on}
-                  title={on ? '从常用里去掉' : `放到常用（每${kind === 'stay' ? '一晚' : '一天'}都直接显示）`}
+                  title={on ? '从常用里去掉' : `放到常用（每${kind === 'stay' ? '一晚' : kind === 'dining' ? '一天' : '处'}都直接显示）`}
                   onClick={() => {
                     const next = on ? favs.filter((k) => k !== l.key) : [...favs, l.key];
                     setFavs(next);

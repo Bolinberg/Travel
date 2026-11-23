@@ -13,7 +13,8 @@ import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, routeKey } from './autoRoute';
-import StayPicker, { DiningPicker } from './StayPicker';
+import StayPicker, { DiningPicker, PlatformChips } from './StayPicker';
+import { MORE_TICKET_PLATFORMS, ticketSearchLinks } from './search';
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
@@ -573,6 +574,15 @@ function NextSteps({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
   );
 }
 
+/** 找门票 / 活动时用更大的区域名（Vivonne Bay → Kangaroo Island，Halls Gap → Grampians） */
+const ticketArea = (place: string) => {
+  const t = short(place);
+  if (/vivonne bay|kingscote|penneshaw|american river/i.test(t)) return 'Kangaroo Island';
+  if (/halls gap/i.test(t)) return 'Grampians';
+  if (/port campbell|apollo bay|lorne/i.test(t)) return `${t} Great Ocean Road`;
+  return t;
+};
+
 /* ---------------- 行程：时间线 ---------------- */
 
 function dayChip(d: Day): { cls: string; text: string } {
@@ -780,7 +790,15 @@ function DayDetail({
               </div>
             </div>
           )}
-          {tab === 'sights' && <DayGuide trip={trip} day={day} index={index} update={update} only="sights" />}
+          {tab === 'sights' && (
+            <>
+              <div className="sp-step">
+                <div className="find-head">门票 / 活动：去平台找</div>
+                <PlatformChips links={ticketSearchLinks(ticketArea(day.to), day.to)} kind="ticket" infos={MORE_TICKET_PLATFORMS} />
+              </div>
+              <DayGuide trip={trip} day={day} index={index} update={update} only="sights" />
+            </>
+          )}
           {tab === 'stays' && <DayGuide trip={trip} day={day} index={index} update={update} only="stays" />}
           {tab === 'dining' && <DayGuide trip={trip} day={day} index={index} update={update} only="dining" />}
         </>

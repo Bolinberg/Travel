@@ -4,7 +4,7 @@ import { CATEGORY_LABELS } from './types';
 import { addDays, dayCosts, foodStandard, formatDate, money, pickedDiningCost, summarize } from './calc';
 import { newId } from './id';
 import { short, shortTitle } from './ui';
-import { extractUrl, nameFromUrl, platformOf } from './search';
+import { extractUrl, nameFromUrl, platformOf, ticketSearchLinks } from './search';
 import StayPicker from './StayPicker';
 import { classifyPaste, PasteBookingBox, usePasteBooking, usePasteDining, usePasteTicket } from './PasteBooking';
 import { looksLikeBookingText } from './bookingParse';
@@ -431,6 +431,19 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
             )}
           </div>
         )}
+        {x.kind === 'ticket' && !x.booked && (() => {
+          const known = KNOWN_TICKETS.find((k) => k.match.test(x.title));
+          const q = known?.en ?? shortTitle(x.title);
+          const alt = ticketSearchLinks(q).filter((l) => ['gyg', 'klook', 'viator', 'experienceoz', 'club'].includes(l.key));
+          return (
+            <div className="bk-alt small">
+              <span className="muted">比价找票：</span>
+              {alt.map((l) => (
+                <a key={l.key} className="link" href={l.href} target="_blank" rel="noreferrer">{l.label}</a>
+              ))}
+            </div>
+          );
+        })()}
         {pasted === x.key && (() => {
           const h = x.kind === 'ticket' ? ticketPaste : stayPaste;
           return (
