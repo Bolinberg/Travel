@@ -219,3 +219,13 @@ describe('方案 D：按家里的需求定制', () => {
     expect(upgradeComparison(up)).toBe(up);
   });
 });
+
+describe('2026 年 11 月核实到的景点变化', () => {
+  it('清单和「要订的」里有十二门徒岩预约；重复升级不重复加', () => {
+    const t = createRouteComparisonTrip();
+    expect(t.checklist.some((c) => c.text.includes('十二门徒岩'))).toBe(true);
+    expect(t.expenses.filter((e) => e.title.includes('十二门徒岩'))).toHaveLength(1);
+    const again = upgradeComparison(t);
+    expect(again).toBe(t);
+  });
+});
