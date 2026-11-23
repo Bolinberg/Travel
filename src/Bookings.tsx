@@ -2,10 +2,9 @@ import { useMemo, useState } from 'react';
 import type { Category, Day, Expense, Rec, Trip } from './types';
 import { CATEGORY_LABELS } from './types';
 import { addDays, dayCosts, foodStandard, formatDate, money, pickedDiningCost, summarize } from './calc';
-import { links } from './geo';
 import { newId } from './id';
-import { STAYS_CHECKED } from './stays';
-import { NumInput, short, shortTitle } from './ui';
+import { short, shortTitle } from './ui';
+import { extractUrl, nameFromUrl, platformOf } from './search';
 import StayPicker from './StayPicker';
 
 type Update = (mutate: (draft: Trip) => void) => void;
@@ -13,9 +12,11 @@ type Update = (mutate: (draft: Trip) => void) => void;
 /** 需要提前订的开销类别（渡轮、门票等）；其余算零花 */
 export const BOOKABLE: Category[] = ['transport', 'activity'];
 
+/** 要提前订的：渡轮、门票等（随手记的一笔不算） */
+export const isBookable = (e: Expense) => BOOKABLE.includes(e.category) && !e.quick;
+
 export type Status = 'todo' | 'booked' | 'paid';
 export const STATUS_LABEL: Record<Status, string> = { todo: '未订', booked: '已订', paid: '已付' };
-const next: Record<Status, Status> = { todo: 'booked', booked: 'paid', paid: 'todo' };
 
 export const expenseStatus = (e: Expense): Status => (e.paid ? 'paid' : e.booked ? 'booked' : 'todo');
 
@@ -64,101 +65,382 @@ export function pickStay(t: Trip, days: number[], r: Rec) {
   }
 }
 
-function StatusButton({ status, onClick }: { status: Status; onClick: () => void }) {
+/** 一行文字记一笔：「停车 25」「Glenelg 冰淇淋 $18」→ 名称 + 金额 */
+export function parseQuick(text: string): { title: string; amount: number } {
+  const m = text.match(/\$?\s*(\d+(?:\.\d+)?)\s*(?:元|刀|aud)?\s*$/i) ?? text.match(/\$\s*(\d+(?:\.\d+)?)/);
+  const amount = m ? Number(m[1]) : 0;
+  const title = (m ? text.replace(m[0], '') : text).replace(/[\s:：,，]+$/, '').trim();
+  return { title, amount };
+}
+
+/** 按名称猜类别 */
+export function guessCategory(text: string): Category {
+  if (/住|酒店|motel|hotel|apartment|airbnb|lodge|cabin/i.test(text)) return 'accommodation';
+  if (/停车|parking|渡轮|渡船|ferry|toll|过路|bus|tram|train|火车|电车|租车|洗车/i.test(text)) return 'transport';
+  if (/门票|票|ticket|动物园|zoo|博物馆|museum|公园|tour|滑沙|体验|游船|活动|entry|pass/i.test(text)) return 'activity';
+  if (/吃|餐|饭|咖啡|cafe|coffee|冰淇淋|零食|早餐|午餐|晚餐|restaurant|超市|food|水果/i.test(text)) return 'food';
+  if (/买|纪念品|购物|shop|souvenir|衣服/i.test(text)) return 'shopping';
+  return 'other';
+}
+
+/** 「已订好」：填实付总价（默认按当前金额） */
+function BookedInline({
+  amount,
+  hint,
+  onConfirm,
+  onCancel,
+}: {
+  amount: number;
+  hint: string;
+  onConfirm: (total: number) => void;
+  onCancel: () => void;
+}) {
+  const [v, setV] = useState(0);
+  const ok = () => onConfirm(v || amount);
   return (
-    <button className={`status-btn s-${status}`} onClick={onClick} title="点一下切换：未订 → 已订 → 已付">
-      {STATUS_LABEL[status]}
-    </button>
+    <div className="sp-pay bk-pay">
+      <label className="small">
+        实付总价（{hint}）
+        <input
+          type="number"
+          inputMode="decimal"
+          autoFocus
+          placeholder={String(amount)}
+          value={v || ''}
+          onChange={(e) => setV(Number(e.target.value) || 0)}
+          onKeyDown={(e) => e.key === 'Enter' && ok()}
+        />
+      </label>
+      <button className="mini on" onClick={ok}>确认</button>
+      <button className="mini" onClick={onCancel}>取消</button>
+    </div>
   );
 }
 
-/** 「预订」页：花费汇总 + 住宿 + 交通门票 + 零花 */
+type Item = {
+  key: string;
+  kind: 'stay' | 'ticket';
+  title: string;
+  sub: string;
+  amount: number;
+  link: string | null;
+  booked: boolean;
+  paid: boolean;
+  estimated: boolean;
+  /** 住宿：连住的晚数 */
+  nights?: number;
+  dayIndex: number;
+  onBooked: (total: number) => void;
+  onUnbook: () => void;
+  onPaid: (v: boolean) => void;
+  onRemove?: () => void;
+  /** 住宿展开换一家 */
+  group?: number[];
+  /** 住宿还没选 */
+  unchosen?: boolean;
+};
+
+/** 「花多少」：只需要「去订 → 已订好（填实付）」，其余自动算 */
 export default function Bookings({ trip, update }: { trip: Trip; update: Update }) {
   const s = useMemo(() => summarize(trip), [trip]);
-  const groups = stayGroups(trip);
-  const bookable = trip.expenses.filter((e) => BOOKABLE.includes(e.category));
-  const others = trip.expenses.filter((e) => !BOOKABLE.includes(e.category));
-  const stayDone = groups.filter((g) => g.days.every((i) => trip.days[i].accommodation?.booked)).length;
-  const ticketDone = bookable.filter((e) => e.booked || e.paid).length;
-  const totalItems = groups.length + bookable.length;
+  const [paying, setPaying] = useState<string | null>(null);
+  const [openStay, setOpenStay] = useState<number | null>(null);
+  const [quick, setQuick] = useState('');
+  const [quickDay, setQuickDay] = useState('');
+  const [note, setNote] = useState('');
+
+  const items: Item[] = [];
+  for (const g of stayGroups(trip)) {
+    const first = trip.days[g.days[0]];
+    const accs = g.days.map((i) => trip.days[i].accommodation!);
+    const picked = first.stayOptions.find((r) => r.picked);
+    items.push({
+      key: `stay-${g.days[0]}`,
+      kind: 'stay',
+      title: `${short(g.place)} · ${stayLabel(first)}`,
+      sub: `${formatDate(addDays(trip.startDate, g.days[0]))} 入住 · ${g.days.length} 晚`,
+      amount: accs.reduce((n, a) => n + (a.cost || 0), 0),
+      link: stayLink(trip, g.days[0]),
+      booked: accs.every((a) => a.booked),
+      paid: accs.every((a) => a.paid),
+      estimated: !accs.every((a) => a.booked) && !picked?.price?.startsWith('实付'),
+      nights: g.days.length,
+      dayIndex: g.days[0],
+      group: g.days,
+      unchosen: stayLabel(first) === '还没选住宿',
+      onBooked: (total) =>
+        update((t) => {
+          const per = Math.round(total / g.days.length);
+          for (const i of g.days) {
+            const a = t.days[i].accommodation;
+            if (!a) continue;
+            a.booked = true;
+            a.cost = per;
+            const r = t.days[i].stayOptions.find((x) => x.picked);
+            if (r) {
+              r.cost = per;
+              r.price = `实付 $${per}/晚`;
+            }
+          }
+        }),
+      onUnbook: () => update((t) => g.days.forEach((i) => t.days[i].accommodation && Object.assign(t.days[i].accommodation!, { booked: false, paid: false }))),
+      onPaid: (v) => update((t) => g.days.forEach((i) => t.days[i].accommodation && (t.days[i].accommodation!.paid = v))),
+    });
+  }
+  for (const e of trip.expenses.filter(isBookable)) {
+    const i = trip.days.findIndex((d) => d.id === e.dayId);
+    const detail = e.title.match(/[（(](.*)[）)]\s*$/)?.[1];
+    const set = (m: (x: Expense) => void) =>
+      update((t) => {
+        const x = t.expenses.find((y) => y.id === e.id);
+        if (x) m(x);
+      });
+    items.push({
+      key: e.id,
+      kind: 'ticket',
+      title: shortTitle(e.title),
+      sub: [i >= 0 ? `第 ${i + 1} 天 · ${formatDate(addDays(trip.startDate, i))}` : CATEGORY_LABELS[e.category], detail].filter(Boolean).join(' · '),
+      amount: e.amount || 0,
+      link: e.url ?? null,
+      booked: !!(e.booked || e.paid),
+      paid: e.paid,
+      estimated: !(e.booked || e.paid),
+      dayIndex: i < 0 ? 99 : i,
+      onBooked: (total) => set((x) => ((x.booked = true), (x.amount = total))),
+      onUnbook: () => set((x) => ((x.booked = false), (x.paid = false))),
+      onPaid: (v) => set((x) => ((x.paid = v), v && (x.booked = true))),
+      onRemove: () => update((t) => void (t.expenses = t.expenses.filter((y) => y.id !== e.id))),
+    });
+  }
+  items.sort((a, b) => a.dayIndex - b.dayIndex);
+  const todo = items.filter((x) => !x.booked);
+  const done = items.filter((x) => x.booked);
+  const confirmed = done.reduce((n, x) => n + x.amount, 0);
+  const others = trip.expenses.filter((e) => !isBookable(e));
   const meals = trip.days.flatMap((d, i) => d.dining.filter((r) => r.picked).map((r) => ({ r, i })));
   const perDay = dayCosts(trip);
-  const undated = trip.expenses.filter((e) => !e.dayId || !trip.days.some((d) => d.id === e.dayId)).reduce((n, e) => n + (e.amount || 0), 0);
-  const doneItems = stayDone + ticketDone;
+  const over = s.budgetLeft < 0;
+  const scale = Math.max(s.total, trip.budget, 1);
 
-  const setExpense = (id: string, mutate: (e: Expense) => void) =>
-    update((t) => {
-      const e = t.expenses.find((x) => x.id === id);
-      if (e) mutate(e);
-    });
+  const addQuick = () => {
+    const { url, title: rest } = extractUrl(quick);
+    const { title, amount } = parseQuick(url ? rest : quick);
+    const name = title || (url ? nameFromUrl(url) || `${platformOf(url)} 预订` : '');
+    if (!name) return;
+    const category = url && !/吃|餐/.test(name) ? (guessCategory(name) === 'other' ? 'activity' : guessCategory(name)) : guessCategory(name);
+    update(
+      (t) =>
+        void t.expenses.push({
+          id: newId(),
+          title: name,
+          amount,
+          category: category === 'accommodation' || category === 'fuel' ? 'other' : category,
+          dayId: quickDay || null,
+          paid: false,
+          ...(url ? { url } : { quick: true }),
+        }),
+    );
+    setNote(`已记下「${name}」${amount ? ` ${money(amount)}` : ''} · ${CATEGORY_LABELS[category === 'accommodation' || category === 'fuel' ? 'other' : category]}${url ? '，放在「要订的」里' : ''}`);
+    setQuick('');
+  };
+
+  const row = (x: Item) => (
+    <li key={x.key} className={`bk-row ${x.booked ? 's-booked' : 's-todo'}`}>
+      <div className="bk-main">
+        <b className="bk-title">{x.title}</b>
+        <div className="muted small">{x.sub}</div>
+        {paying === x.key ? (
+          <BookedInline
+            amount={x.amount}
+            hint={x.nights ? `${x.nights} 晚，AUD` : 'AUD'}
+            onConfirm={(v) => {
+              x.onBooked(v);
+              setPaying(null);
+            }}
+            onCancel={() => setPaying(null)}
+          />
+        ) : (
+          <div className="row wrap gap bk-actions">
+            {!x.booked && x.link && (
+              <a className="mini on btn-link" href={x.link} target="_blank" rel="noreferrer">去订 ↗</a>
+            )}
+            {x.unchosen ? (
+              <button className="mini on" onClick={() => setOpenStay(openStay === x.dayIndex ? null : x.dayIndex)}>
+                {openStay === x.dayIndex ? '收起' : '选住宿'}
+              </button>
+            ) : !x.booked ? (
+              <button className="mini" onClick={() => setPaying(x.key)}>已订好</button>
+            ) : (
+              <label className="check small">
+                <input type="checkbox" checked={x.paid} onChange={(e) => x.onPaid(e.target.checked)} />
+                已付款
+              </label>
+            )}
+            {x.kind === 'stay' && !x.unchosen && (
+              <button className="link small" onClick={() => setOpenStay(openStay === x.dayIndex ? null : x.dayIndex)}>
+                {openStay === x.dayIndex ? '收起' : x.booked ? '看详情' : '换一家 / 粘贴链接'}
+              </button>
+            )}
+            {x.booked && (
+              <button className="link small" onClick={x.onUnbook}>改为未订</button>
+            )}
+            {x.onRemove && !x.booked && (
+              <button className="icon" aria-label={`删除 ${x.title}`} onClick={x.onRemove}>×</button>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="bk-side">
+        <span className="bk-amt">{money(x.amount)}</span>
+        <span className={`tag ${x.booked ? 'good' : 'warn'}`}>{x.booked ? (x.paid ? '已付' : '已订') : '估算'}</span>
+      </div>
+      {x.kind === 'stay' && openStay === x.dayIndex && (
+        <div className="bk-picker">
+          <StayPicker trip={trip} dayIndex={x.dayIndex} update={update} compact />
+        </div>
+      )}
+    </li>
+  );
 
   return (
     <>
-      <BudgetCard trip={trip} doneItems={doneItems} totalItems={totalItems} />
-
-      <section className="bk-sec" aria-labelledby="bk-stays">
-        <div className="bk-sec-head">
-          <h2 id="bk-stays">住宿</h2>
-          <span className="muted small">
-            {s.nights} 晚 · 已订 {stayDone}/{groups.length} 处
+      <section className="card budget-card">
+        <div className="budget-line">
+          <span className="muted small">预计总花费</span>
+          <span className="budget-total">{money(s.total)}</span>
+        </div>
+        <div className="meter two" role="img" aria-label={`已确定 ${money(confirmed)}，估算 ${money(s.total - confirmed)}，预算 ${money(trip.budget)}`}>
+          <span className="seg sure" style={{ width: `${(confirmed / scale) * 100}%` }} />
+          <span className="seg est" style={{ width: `${((s.total - confirmed) / scale) * 100}%` }} />
+          {trip.budget > 0 && <span className="meter-limit" style={{ left: `${(trip.budget / scale) * 100}%` }} />}
+        </div>
+        <div className="budget-sub">
+          <span>
+            <i className="sw sure" /> 已订好 <b>{money(confirmed)}</b>
+          </span>
+          <span>
+            <i className="sw est" /> 估算 <b>{money(s.total - confirmed)}</b>
+          </span>
+          <span className={over ? 'bad' : ''}>
+            预算 {money(trip.budget)}，{over ? `超出 ${money(-s.budgetLeft)}` : `还剩 ${money(s.budgetLeft)}`}
           </span>
         </div>
         <p className="muted small">
-          每处都附有核实过的候选（标「推荐」的是首选）。评分来自 Booking.com、Expedia 等平台{STAYS_CHECKED ? `（${STAYS_CHECKED} 核对）` : ''}，价格是 12 月旺季估算，订前请点链接确认实时价格、4 人房型和最少入住晚数。
+          都是自动算的：住宿按选定的价格、油费按里程、餐饮按每日标准和已选餐厅。订好一项点「已订好」填实付，估算就变成实数。
         </p>
-        <ul className="plain bk-list">
-          {groups.map((g) => (
-            <StayRow key={g.days[0]} trip={trip} group={g} update={update} />
-          ))}
-        </ul>
-        {!groups.length && <p className="muted small">这个方案没有需要住宿的晚上。</p>}
       </section>
 
-      <section className="bk-sec" aria-labelledby="bk-tickets">
+      <section className="bk-sec" aria-labelledby="bk-todo">
         <div className="bk-sec-head">
-          <h2 id="bk-tickets">交通与门票</h2>
-          <span className="muted small">已订 {ticketDone}/{bookable.length} 项</span>
+          <h2 id="bk-todo">要订的</h2>
+          <span className="muted small">
+            还有 {todo.length} 项 · 已订 {done.length}/{items.length}
+          </span>
         </div>
-        <ul className="plain bk-list">
-          {bookable.map((e) => (
-            <ExpenseRow key={e.id} trip={trip} e={e} set={(m) => setExpense(e.id, m)} update={update} withStatus />
-          ))}
-        </ul>
-        <AddExpense trip={trip} update={update} categories={BOOKABLE} placeholder="新增要订的项目，如：熊猫幕后体验" />
+        {todo.length ? <ul className="plain bk-list">{todo.map(row)}</ul> : <p className="small good">都订好了。</p>}
       </section>
 
-      <section className="bk-sec" aria-labelledby="bk-food">
+      {done.length > 0 && (
+        <section className="bk-sec" aria-labelledby="bk-done">
+          <div className="bk-sec-head">
+            <h2 id="bk-done">已订好</h2>
+            <span className="muted small">{money(confirmed)}</span>
+          </div>
+          <ul className="plain bk-list">{done.map(row)}</ul>
+        </section>
+      )}
+
+      <section className="bk-sec" aria-labelledby="bk-auto">
         <div className="bk-sec-head">
-          <h2 id="bk-food">餐厅</h2>
-          <span className="muted small">已选 {meals.length} 家</span>
+          <h2 id="bk-auto">自动估算</h2>
+          <span className="muted small">{money(s.byCategory.fuel + s.byCategory.food)}</span>
         </div>
-        {meals.length ? (
-          <ul className="plain bk-list">
-            {meals.map(({ r, i }) => (
-              <li key={r.id} className="bk-row auto">
-                <div className="bk-main">
-                  <b className="bk-title">{r.name}</b>
-                  <div className="muted small">
-                    第 {i + 1} 天 · {formatDate(addDays(trip.startDate, i))} · {short(trip.days[i].to)}
-                    {r.rating ? ` · ★ ${r.rating}` : ''}
-                  </div>
-                  {(r.bookingUrl || r.url) && (
-                    <a className="link small" href={r.bookingUrl || r.url} target="_blank" rel="noreferrer">打开链接 ↗</a>
-                  )}
-                </div>
-                <span className="bk-amt">{r.cost ? money(r.cost) : <span className="muted small">未填价格</span>}</span>
-              </li>
+        <ul className="plain bk-list">
+          <li className="bk-row auto">
+            <div className="bk-main">
+              <b>油费</b>
+              <div className="muted small">
+                {s.totalKm.toLocaleString()} km × {trip.vehicle.litresPer100km} L/100km × ${trip.vehicle.fuelPrice}/L
+              </div>
+            </div>
+            <span className="bk-amt">{money(s.byCategory.fuel)}</span>
+          </li>
+          <li className="bk-row auto">
+            <div className="bk-main">
+              <b>餐饮</b>
+              <div className="muted small">
+                每天 {money(foodStandard(trip))}；选了餐厅且更贵的那天按餐厅算{meals.length ? `（已选 ${meals.length} 家）` : ''}
+              </div>
+              {meals.length > 0 && (
+                <ul className="plain bk-meals small">
+                  {meals.map(({ r, i }) => (
+                    <li key={r.id}>
+                      第 {i + 1} 天 · {r.name}
+                      {r.cost ? ` · ${money(r.cost)}` : ' · 价格未填'}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <span className="bk-amt">{money(s.byCategory.food)}</span>
+          </li>
+        </ul>
+      </section>
+
+      <section className="bk-sec" aria-labelledby="bk-quick">
+        <div className="bk-sec-head">
+          <h2 id="bk-quick">记一笔</h2>
+          <span className="muted small">{others.length ? `其他开销 ${money(others.reduce((n, e) => n + (e.amount || 0), 0))}` : ''}</span>
+        </div>
+        <div className="quick">
+          <input
+            aria-label="记一笔"
+            placeholder="写一句就行：停车 25 / 海豚船票 180 / 粘贴订票链接"
+            value={quick}
+            onChange={(e) => setQuick(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && addQuick()}
+          />
+          <select aria-label="哪一天" value={quickDay} onChange={(e) => setQuickDay(e.target.value)}>
+            <option value="">不分日期</option>
+            {trip.days.map((d, i) => (
+              <option key={d.id} value={d.id}>第 {i + 1} 天</option>
             ))}
+          </select>
+          <button className="primary" disabled={!quick.trim()} onClick={addQuick}>记下</button>
+        </div>
+        {note && <p className="small sp-added">{note}</p>}
+        {others.length > 0 && (
+          <ul className="plain bk-list">
+            {others.map((e) => {
+              const i = trip.days.findIndex((d) => d.id === e.dayId);
+              return (
+                <li key={e.id} className="bk-row auto">
+                  <div className="bk-main">
+                    <b className="bk-title">{shortTitle(e.title)}</b>
+                    <div className="muted small">
+                      {CATEGORY_LABELS[e.category]}
+                      {i >= 0 ? ` · 第 ${i + 1} 天` : ''}
+                    </div>
+                  </div>
+                  <div className="bk-side">
+                    <span className="bk-amt">{money(e.amount)}</span>
+                    <button
+                      className="icon"
+                      aria-label={`删除 ${shortTitle(e.title)}`}
+                      onClick={() => update((t) => void (t.expenses = t.expenses.filter((x) => x.id !== e.id)))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-        ) : (
-          <p className="muted small">还没选餐厅。在「行程」里点某一天 →「吃饭」，按评分找到喜欢的餐厅后粘贴链接加入。</p>
         )}
       </section>
 
-      <section className="bk-sec" aria-labelledby="bk-days">
-        <div className="bk-sec-head">
-          <h2 id="bk-days">按天花费</h2>
-        </div>
+      <details className="card history bk-days-wrap">
+        <summary>按天看花费</summary>
         <div className="table-scroll bk-days">
           <table>
             <thead>
@@ -187,276 +469,9 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr>
-                <th>不分日期</th>
-                <td colSpan={4} className="muted small">没指定日期的开销</td>
-                <td>
-                  <b>{money(undated)}</b>
-                </td>
-              </tr>
-            </tfoot>
           </table>
         </div>
-      </section>
-
-      <section className="bk-sec" aria-labelledby="bk-other">
-        <div className="bk-sec-head">
-          <h2 id="bk-other">其他开销</h2>
-        </div>
-        <ul className="plain bk-list">
-          <li className="bk-row auto">
-            <div className="bk-main">
-              <b>油费（自动估算）</b>
-              <div className="muted small">
-                {s.totalKm.toLocaleString()} km × {trip.vehicle.litresPer100km} L/100km × ${trip.vehicle.fuelPrice}/L
-              </div>
-            </div>
-            <span className="bk-amt">{money(s.byCategory.fuel)}</span>
-          </li>
-          <li className="bk-row auto">
-            <div className="bk-main">
-              <b>餐饮</b>
-              <div className="muted small">
-                每天按标准 {money(foodStandard(trip))}（{trip.adults}×${trip.food.adultPerDay} + {trip.children}×${trip.food.childPerDay}，可在设置里改）；已选餐厅合计更高的那天按餐厅算
-              </div>
-            </div>
-            <span className="bk-amt">{money(s.byCategory.food)}</span>
-          </li>
-          {others.map((e) => (
-            <ExpenseRow key={e.id} trip={trip} e={e} set={(m) => setExpense(e.id, m)} update={update} />
-          ))}
-        </ul>
-        <AddExpense
-          trip={trip}
-          update={update}
-          categories={(Object.keys(CATEGORY_LABELS) as Category[]).filter((c) => !BOOKABLE.includes(c) && c !== 'fuel' && c !== 'accommodation')}
-          placeholder="新增开销，如：Glenelg 冰淇淋"
-        />
-      </section>
+      </details>
     </>
-  );
-}
-
-function BudgetCard({ trip, doneItems, totalItems }: { trip: Trip; doneItems: number; totalItems: number }) {
-  const s = useMemo(() => summarize(trip), [trip]);
-  const over = s.budgetLeft < 0;
-  const scale = Math.max(s.total, trip.budget, 1);
-  const cats = (Object.keys(CATEGORY_LABELS) as Category[]).filter((c) => s.byCategory[c] > 0);
-  return (
-    <section className="card budget-card">
-      <div className="budget-line">
-        <span className="muted small">预计总花费</span>
-        <span className="budget-total">{money(s.total)}</span>
-      </div>
-      <div className="meter" role="img" aria-label={`预计花费 ${money(s.total)}，预算 ${money(trip.budget)}`}>
-        {cats.map((c) => (
-          <span key={c} className={`seg c-${c}`} style={{ width: `${(s.byCategory[c] / scale) * 100}%` }} title={CATEGORY_LABELS[c]} />
-        ))}
-        {trip.budget > 0 && <span className="meter-limit" style={{ left: `${(trip.budget / scale) * 100}%` }} />}
-      </div>
-      <ul className="plain legend">
-        {cats.map((c) => (
-          <li key={c}>
-            <i className={`sw c-${c}`} /> {CATEGORY_LABELS[c]} <b>{money(s.byCategory[c])}</b>
-          </li>
-        ))}
-      </ul>
-      <div className="budget-sub">
-        <span className={over ? 'bad' : ''}>
-          预算 {money(trip.budget)}，{over ? `超出 ${money(-s.budgetLeft)}` : `还剩 ${money(s.budgetLeft)}`}
-        </span>
-        <span>已付 {money(s.paid)}</span>
-        <span>
-          已订 {doneItems}/{totalItems} 项
-        </span>
-      </div>
-    </section>
-  );
-}
-
-function StayRow({ trip, group, update }: { trip: Trip; group: { place: string; days: number[] }; update: Update }) {
-  const first = trip.days[group.days[0]];
-  const nights = group.days.length;
-  const checkin = addDays(trip.startDate, group.days[0]);
-  const checkout = addDays(trip.startDate, group.days[nights - 1] + 1);
-  const picked = first.stayOptions.find((r) => r.picked);
-  const top = first.stayOptions.find((r) => r.top);
-  const all = group.days.map((i) => trip.days[i].accommodation!);
-  const status: Status = all.every((a) => a.paid) ? 'paid' : all.every((a) => a.booked) ? 'booked' : 'todo';
-  const [open, setOpen] = useState(false);
-  const link = stayLink(trip, group.days[0]);
-  const cost = all.reduce((n, a) => n + (a.cost || 0), 0);
-
-  const setStatus = (st: Status) =>
-    update((t) => {
-      for (const i of group.days) {
-        const a = t.days[i].accommodation;
-        if (!a) continue;
-        a.booked = st !== 'todo';
-        a.paid = st === 'paid';
-      }
-    });
-  const pick = (r: Rec) => update((t) => pickStay(t, group.days, r));
-
-  return (
-    <li className={`bk-row stay s-${status}`}>
-      <div className="bk-main">
-        <div className="muted small">
-          {formatDate(checkin)} 入住 · {nights} 晚 · 第 {group.days[0] + 1}
-          {nights > 1 ? `–${group.days[nights - 1] + 1}` : ''} 天
-        </div>
-        <b className="bk-title">
-          {short(group.place)} · {stayLabel(first)}
-        </b>
-        {!picked && top && status === 'todo' && (
-          <div className="bk-suggest small">
-            推荐 <b>{top.name}</b>
-            {top.rating ? ` · ★ ${top.rating}` : ''}{' '}
-            <button className="link strong" onClick={() => pick(top)}>选这家</button>
-          </div>
-        )}
-        <div className="row wrap gap small bk-actions">
-          {link && (
-            <a className="link strong" href={link} target="_blank" rel="noreferrer">去订 ↗</a>
-          )}
-          {first.stayOptions.length > 0 && (
-            <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? '收起' : '换一家 / 粘贴链接'}
-            </button>
-          )}
-          <a className="link" href={links.booking(first.to, checkin, checkout, trip.adults)} target="_blank" rel="noreferrer">
-            Booking 搜同日期
-          </a>
-        </div>
-      </div>
-      <div className="bk-side">
-        <span className="bk-amt">{money(cost)}</span>
-        <StatusButton status={status} onClick={() => setStatus(next[status])} />
-      </div>
-      {open && (
-        <div className="bk-picker">
-          <StayPicker trip={trip} dayIndex={group.days[0]} update={update} compact />
-        </div>
-      )}
-    </li>
-  );
-}
-
-function ExpenseRow({
-  trip,
-  e,
-  set,
-  update,
-  withStatus = false,
-}: {
-  trip: Trip;
-  e: Expense;
-  set: (mutate: (e: Expense) => void) => void;
-  update: Update;
-  withStatus?: boolean;
-}) {
-  const i = trip.days.findIndex((d) => d.id === e.dayId);
-  const status = expenseStatus(e);
-  const detail = e.title.match(/[（(](.*)[）)]\s*$/)?.[1];
-  return (
-    <li className={`bk-row s-${withStatus ? status : e.paid ? 'paid' : 'todo'}`}>
-      <div className="bk-main">
-        <b className="bk-title">{shortTitle(e.title)}</b>
-        <div className="muted small">
-          {i >= 0 ? `第 ${i + 1} 天 · ${formatDate(addDays(trip.startDate, i))}` : CATEGORY_LABELS[e.category]}
-          {detail ? ` · ${detail}` : ''}
-        </div>
-      </div>
-      <div className="bk-side">
-        <span className="bk-amt-edit">
-          $<NumInput value={e.amount} label={`${shortTitle(e.title)} 金额`} onChange={(v) => set((x) => void (x.amount = v))} />
-        </span>
-        {withStatus ? (
-          <StatusButton
-            status={status}
-            onClick={() =>
-              set((x) => {
-                const n = next[expenseStatus(x)];
-                x.booked = n !== 'todo';
-                x.paid = n === 'paid';
-              })
-            }
-          />
-        ) : (
-          <button className={`status-btn s-${e.paid ? 'paid' : 'todo'}`} onClick={() => set((x) => void (x.paid = !x.paid))}>
-            {e.paid ? '已付' : '未付'}
-          </button>
-        )}
-        <button
-          className="icon"
-          aria-label={`删除 ${shortTitle(e.title)}`}
-          onClick={() => update((t) => void (t.expenses = t.expenses.filter((x) => x.id !== e.id)))}
-        >
-          ×
-        </button>
-      </div>
-    </li>
-  );
-}
-
-function AddExpense({
-  trip,
-  update,
-  categories,
-  placeholder,
-}: {
-  trip: Trip;
-  update: Update;
-  categories: Category[];
-  placeholder: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: '', amount: 0, category: categories[0], dayId: '' });
-  const add = () => {
-    if (!draft.title.trim()) return;
-    update(
-      (t) =>
-        void t.expenses.push({
-          id: newId(),
-          title: draft.title.trim(),
-          amount: draft.amount,
-          category: draft.category,
-          dayId: draft.dayId || null,
-          paid: false,
-        }),
-    );
-    setDraft({ ...draft, title: '', amount: 0 });
-    setOpen(false);
-  };
-  if (!open) {
-    return (
-      <button className="add-line" onClick={() => setOpen(true)}>
-        + 添加
-      </button>
-    );
-  }
-  return (
-    <div className="form add card">
-      <input autoFocus placeholder={placeholder} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && add()} />
-      <div className="grid3">
-        <NumInput value={draft.amount} label="金额" onChange={(v) => setDraft({ ...draft, amount: v })} />
-        <select aria-label="类别" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as Category })}>
-          {categories.map((c) => (
-            <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
-          ))}
-        </select>
-        <select aria-label="日期" value={draft.dayId} onChange={(e) => setDraft({ ...draft, dayId: e.target.value })}>
-          <option value="">不限日期</option>
-          {trip.days.map((d, i) => (
-            <option key={d.id} value={d.id}>第 {i + 1} 天</option>
-          ))}
-        </select>
-      </div>
-      <div className="row">
-        <button className="primary" onClick={add}>添加</button>
-        <button onClick={() => setOpen(false)}>取消</button>
-      </div>
-    </div>
   );
 }

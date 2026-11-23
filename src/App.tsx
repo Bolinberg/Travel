@@ -10,7 +10,7 @@ import Replan from './Replan';
 import { AskBar, PlansPage } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
-import Bookings, { BOOKABLE, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
+import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, routeKey } from './autoRoute';
 import StayPicker, { DiningPicker } from './StayPicker';
@@ -514,7 +514,7 @@ function NextSteps({ trip, goTo }: { trip: Trip; goTo: (t: Tab) => void }) {
   const items: { text: React.ReactNode; action: string; tab: Tab; urgent?: boolean }[] = [];
   const unbookedGroups = stayGroups(trip).filter((g) => g.days.some((i) => !trip.days[i].accommodation?.booked));
   const unbookedNights = unbookedGroups.reduce((n, g) => n + g.days.filter((i) => !trip.days[i].accommodation?.booked).length, 0);
-  const tickets = trip.expenses.filter((e) => BOOKABLE.includes(e.category) && !e.booked && !e.paid && e.dayId);
+  const tickets = trip.expenses.filter((e) => isBookable(e) && !e.booked && !e.paid && e.dayId);
   // 渡轮最容易订满，排在最前面
   tickets.sort((a, b) => Number(/渡轮|ferry|sealink/i.test(b.title)) - Number(/渡轮|ferry|sealink/i.test(a.title)));
   if (tickets[0]) items.push({ text: shortTitle(tickets[0].title), action: '去订', tab: 'bookings', urgent: /渡轮|ferry|sealink/i.test(tickets[0].title) });

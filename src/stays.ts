@@ -57,10 +57,34 @@ export function applyVerifiedStaysToDay(d: Day): boolean {
   return true;
 }
 
+/** 要提前订的项目的官方预订页 */
+const BOOKING_PAGES: [RegExp, string][] = [
+  [/sealink|渡轮/i, 'https://www.sealink.com.au/kangaroo-island/'],
+  [/动物园|adelaide zoo/i, 'https://www.adelaidezoo.com.au/'],
+];
+function addBookingLinks(t: Trip): boolean {
+  let changed = false;
+  for (const e of t.expenses) {
+    // 停车这类不用提前订：当成随手记的开销
+    if (!e.quick && /停车|parking/i.test(e.title)) {
+      e.quick = true;
+      changed = true;
+    }
+    if (e.url) continue;
+    const hit = BOOKING_PAGES.find(([re]) => re.test(e.title));
+    if (hit) {
+      e.url = hit[1];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** 行程本身和它保存的所有方案都换上核实过的住宿 */
 export function applyVerifiedStays(trip: Trip): Trip {
-  let changed = false;
   const t = structuredClone(trip);
+  let changed = addBookingLinks(t);
+  for (const v of t.versions ?? []) changed = addBookingLinks(v.snapshot) || changed;
   for (const d of t.days) changed = applyVerifiedStaysToDay(d) || changed;
   for (const v of t.versions ?? []) for (const d of v.snapshot.days) changed = applyVerifiedStaysToDay(d) || changed;
   return changed ? t : trip;

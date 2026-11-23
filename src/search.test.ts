@@ -56,3 +56,18 @@ describe('认出平台和名字', () => {
     });
   });
 });
+
+import { guessCategory, parseQuick } from './Bookings';
+describe('记一笔', () => {
+  it('一句话拆出名称和金额', () => {
+    expect(parseQuick('停车 25')).toEqual({ title: '停车', amount: 25 });
+    expect(parseQuick('Glenelg 冰淇淋 $18.5')).toEqual({ title: 'Glenelg 冰淇淋', amount: 18.5 });
+    expect(parseQuick('纪念品')).toEqual({ title: '纪念品', amount: 0 });
+  });
+  it('按名称猜类别', () => {
+    expect(guessCategory('停车')).toBe('transport');
+    expect(guessCategory('海豚船票')).toBe('activity');
+    expect(guessCategory('冰淇淋')).toBe('food');
+    expect(guessCategory('纪念品')).toBe('shopping');
+  });
+});

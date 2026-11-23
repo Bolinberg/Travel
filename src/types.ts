@@ -60,6 +60,8 @@ export interface Rec {
   rating?: string;
   /** 首选推荐 */
   top?: boolean;
+  /** 餐厅已订位 */
+  booked?: boolean;
 }
 
 /** 交通方式 */
@@ -100,6 +102,10 @@ export interface Expense {
   paid: boolean;
   /** 已预订（门票、渡轮等需要提前订的项目） */
   booked?: boolean;
+  /** 预订链接 */
+  url?: string;
+  /** 随手记的一笔（不用提前订，不进「要订的」） */
+  quick?: boolean;
 }
 
 export interface ChecklistItem {

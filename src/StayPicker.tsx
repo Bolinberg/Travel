@@ -398,13 +398,35 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
                       </span>
                     </div>
                     <div className="sp-cand-act">
+                      <a
+                        className="link small"
+                        href={'https://www.opentable.com.au/s?' + new URLSearchParams({ term: `${r.name} ${short(day.to)}`, covers: String(trip.adults + trip.children), dateTime: `${date}T18:00` })}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="在 OpenTable 上按人数和日期订位"
+                      >
+                        订位 ↗
+                      </a>
+                      <label className="check small" title="订好位了">
+                        <input
+                          type="checkbox"
+                          checked={!!r.booked}
+                          onChange={(e) =>
+                            set((list) => {
+                              const x = list.find((y) => y.id === r.id);
+                              if (x) x.booked = e.target.checked;
+                            })
+                          }
+                        />
+                        已订
+                      </label>
                       <span className="sp-price">
                         $
                         <input
                           type="number"
                           inputMode="decimal"
                           aria-label={`${r.name} 这顿价格`}
-                          placeholder="价格"
+                          placeholder="这顿多少"
                           value={r.cost || ''}
                           onChange={(e) =>
                             set((list) => {

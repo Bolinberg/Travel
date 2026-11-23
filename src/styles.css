@@ -3300,3 +3300,67 @@ details.history > summary {
 .plan-line {
   min-height: 32px;
 }
+
+/* 花多少：已订好 vs 估算 */
+.meter.two .seg.sure {
+  background: var(--good);
+}
+.meter.two .seg.est {
+  background: var(--line);
+}
+.sw.sure {
+  background: var(--good);
+}
+.sw.est {
+  background: var(--line);
+}
+.budget-card p {
+  margin: 0;
+}
+.bk-pay {
+  margin-top: 4px;
+}
+.bk-side .tag {
+  font-size: 11px;
+}
+.tag.warn {
+  background: var(--amber-soft);
+  color: var(--amber-ink);
+}
+ul.plain.bk-meals {
+  margin-top: 4px;
+}
+ul.plain.bk-meals > li {
+  padding: 2px 0;
+  border: 0;
+  color: var(--muted);
+}
+.quick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+@media (max-width: 480px) {
+  .quick {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .quick input {
+    grid-column: 1 / -1;
+  }
+}
+.bk-days-wrap {
+  margin-top: 22px;
+}
+.sp-cand-act {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.sp-now ul.plain.sp-list > li {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.sp-now .sp-cand-act {
+  justify-content: flex-start;
+  gap: 10px;
+}
