@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Day, Place, Rec, Trip } from './types';
+import type { Day, Place, Trip } from './types';
 import { addDays, formatDate, fuelCost, money, summarize } from './calc';
 import { createBlankTrip, createDefaultTrip, duplicateTrip, TEMPLATES } from './defaultTrip';
 import { downloadJson, loadStore, migrateTrip, saveStore, type Store } from './storage';
@@ -9,11 +9,11 @@ import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
 import { AskBar, PlansPage } from './Planner';
 import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
-import { applyVerifiedStays } from './stays';
+import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 import Bookings, { BOOKABLE, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, routeKey } from './autoRoute';
-import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks, type SearchLink } from './search';
+import StayPicker, { DiningPicker } from './StayPicker';
 import Versions from './Versions';
 import { useSync } from './useSync';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
@@ -957,7 +957,20 @@ function DayEditor({
       const oldTo = d.to;
       mutate(d);
       d.stops = d.stops.map((s) => s.trim()).filter(Boolean);
-      if (wasAuto) d.title = autoTitle(d);
+      if (wasAuto || oldTo.trim() !== d.to.trim()) d.title = autoTitle(d);
+      // 目的地换了：原来那个地方的住宿、餐厅候选都不适用了
+      if (oldTo.trim() !== d.to.trim()) {
+        if (d.accommodation) {
+          const old = d.accommodation;
+          if (old.booked && old.name) {
+            d.notes = `⚠️ 目的地改了：原来订的「${old.name}」在 ${short(oldTo)}，记得取消或改订。\n${d.notes}`.trim();
+          }
+          d.accommodation = { name: '', cost: old.cost, booked: false, paid: false, notes: '' };
+          d.stayOptions = [];
+          applyVerifiedStaysToDay(d);
+        }
+        d.dining = d.dining.filter((r) => r.picked && r.where !== short(oldTo));
+      }
       const n = t.days[i + 1];
       if (n && oldTo !== d.to && n.from.trim() === oldTo.trim()) {
         const nAuto = !n.title.trim() || n.title === autoTitle(n);
@@ -1548,15 +1561,7 @@ function DayGuide({
   only?: 'sights' | 'stays' | 'dining';
 }) {
   const show = (k: 'sights' | 'stays' | 'dining') => !only || only === k;
-  const group = stayGroups(trip).find((g) => g.days.includes(index))?.days ?? [index];
   const sights = dayPlaces(trip, day).filter((p) => p.desc && p.name !== day.from);
-  const town = short(day.to);
-  const checkin = addDays(trip.startDate, index);
-  const setRecs = (key: 'stayOptions' | 'dining', mutate: (list: Rec[], d: Day) => void) =>
-    update?.((t) => {
-      const d = t.days.find((x) => x.id === day.id);
-      if (d) mutate(d[key], d);
-    });
 
   return (
     <div className="guide">
@@ -1573,47 +1578,9 @@ function DayGuide({
         </>
       )}
 
-      {show('stays') && day.accommodation && (
-        <RecSection
-          title="住哪"
-          step={`${short(day.to)} · ${formatDate(checkin)} 入住${group.length > 1 ? `，连住 ${group.length} 晚` : ''}。选定的住宿会按每晚价格计入花费，在「预订」页跟踪订没订。`}
-          recs={day.stayOptions}
-          pickLabel={['选这家', '已选 ✓']}
-          search={staySearchLinks({ place: day.to, checkin, checkout: addDays(checkin, group.length), adults: trip.adults, childAges: childAges(trip) })}
-          onPick={update && ((r) => update((t) => pickStay(t, group, r)))}
-          onRemove={update && ((r) => update((t) => group.forEach((i) => void (t.days[i].stayOptions = t.days[i].stayOptions.filter((x) => x.name !== r.name)))))}
-          onAdd={
-            update &&
-            ((r, pick) =>
-              update((t) => {
-                for (const i of group) t.days[i].stayOptions.push({ ...r, id: newId() });
-                if (pick) pickStay(t, group, r);
-              }))
-          }
-          defaultWhere={town}
-          costUnit="每晚"
-          defaultType="住宿"
-        />
-      )}
+      {show('stays') && day.accommodation && update && <StayPicker trip={trip} dayIndex={index} update={update} />}
 
-      {show('dining') && (
-        <RecSection
-          title="吃什么"
-          step="点「想去」加入这天的安排；填了价格的餐厅计入花费（当天餐饮取每日标准和已选餐厅合计中较大的那个，不会重复算）。"
-          recs={day.dining}
-          pickLabel={['想去', '想去 ✓']}
-          search={diningSearchLinks(day.to, checkin, trip.adults + trip.children)}
-          onPick={update && ((r) => setRecs('dining', (list) => {
-            const x = list.find((y) => y.id === r.id);
-            if (x) x.picked = !x.picked;
-          }))}
-          onRemove={update && ((r) => setRecs('dining', (_, d) => void (d.dining = d.dining.filter((x) => x.id !== r.id))))}
-          onAdd={update && ((r, pick) => setRecs('dining', (list) => void list.push({ ...r, picked: pick })))}
-          defaultWhere={town}
-          costUnit="这顿合计"
-          defaultType="餐厅"
-        />
-      )}
+      {show('dining') && update && <DiningPicker trip={trip} dayIndex={index} update={update} />}
     </div>
   );
 }
@@ -1680,194 +1647,6 @@ function PlaceCard({ place }: { place: Place }) {
         </div>
       </div>
     </article>
-  );
-}
-
-function RecSection({
-  title,
-  step,
-  recs,
-  pickLabel,
-  search,
-  onPick,
-  onRemove,
-  onAdd,
-  defaultWhere,
-  costUnit,
-  defaultType,
-}: {
-  title: string;
-  /** 这一步在流程里做什么 */
-  step: string;
-  recs: Rec[];
-  pickLabel: [string, string];
-  search: SearchLink[];
-  onPick?: (r: Rec) => void;
-  onRemove?: (r: Rec) => void;
-  /** pick = 加入后直接选定（计入花费） */
-  onAdd?: (r: Rec, pick: boolean) => void;
-  defaultWhere: string;
-  /** 价格单位：「每晚」或「这顿合计」 */
-  costUnit: string;
-  defaultType: string;
-}) {
-  return (
-    <section className="rec-sec">
-      <h3>{title}</h3>
-      <p className="muted small rec-step">{step}</p>
-
-      <div className="find">
-        <div className="find-head">① 去平台按评分找</div>
-        <div className="find-links">
-          {search.map((l) => (
-            <a key={l.key} className="find-link" href={l.href} target="_blank" rel="noreferrer">
-              <b>{l.label} ↗</b>
-              <span>{l.hint}</span>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      {onAdd && <AddFromLink onAdd={onAdd} defaultWhere={defaultWhere} costUnit={costUnit} defaultType={defaultType} />}
-
-      <div className="find-head">③ 候选（{recs.length}）</div>
-      {recs.length === 0 && <p className="muted small">还没有候选。用上面的链接找到喜欢的，把链接粘贴进来。</p>}
-      <ul className="plain recs">
-        {recs.map((r) => {
-          const link = r.bookingUrl || r.url;
-          return (
-            <li key={r.id} className={r.picked ? 'picked' : ''}>
-              <div className="row between">
-                <b>
-                  {r.name} {r.top && <span className="tag top">推荐</span>}
-                </b>
-                <span className="muted small nowrap">{r.cost ? `${money(r.cost)}${costUnit === '每晚' ? '/晚' : ''}` : r.price}</span>
-              </div>
-              <div className="muted small">
-                {r.type}
-                {r.where && r.where !== defaultWhere ? ` · ${r.where}` : ''}
-                {r.cost && r.price && !/^\$?[\d,.]+$/.test(r.price) ? ` · ${r.price}` : ''}
-              </div>
-              {r.rating && <div className="small rating">★ {r.rating}</div>}
-              {r.note && <p className="small">{r.note}</p>}
-              <div className="row wrap gap small">
-                {r.url && r.url !== link && <a className="link strong" href={r.url} target="_blank" rel="noreferrer">官网 ↗</a>}
-                {link && (
-                  <a className="link strong" href={link} target="_blank" rel="noreferrer">{platformOf(link)} ↗</a>
-                )}
-                {!link && <a className="link" href={links.tripadvisor(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">Tripadvisor</a>}
-                <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
-                <span className="spacer" />
-                {onPick && (
-                  <button className={r.picked ? 'mini on' : 'mini'} onClick={() => onPick(r)}>
-                    {r.picked ? pickLabel[1] : pickLabel[0]}
-                  </button>
-                )}
-                {onRemove && (
-                  <button className="icon" aria-label={`删除 ${r.name}`} onClick={() => onRemove(r)}>×</button>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
-/** 「② 粘贴链接加入行程」：从平台复制链接（或分享出来的整段文字）粘贴进来，自动认出平台和名字 */
-function AddFromLink({
-  onAdd,
-  defaultWhere,
-  costUnit,
-  defaultType,
-}: {
-  onAdd: (r: Rec, pick: boolean) => void;
-  defaultWhere: string;
-  costUnit: string;
-  defaultType: string;
-}) {
-  const empty = { text: '', name: '', cost: 0, rating: '', note: '', pick: true };
-  const [d, setD] = useState(empty);
-  const [open, setOpen] = useState(false);
-  const { url, title } = extractUrl(d.text);
-  const guessed = url ? nameFromUrl(url) : '';
-  const name = d.name || guessed || title.slice(0, 60);
-  const take = (text: string) => setD((x) => ({ ...x, text }));
-  const pasteFromClipboard = async () => {
-    try {
-      take(await navigator.clipboard.readText());
-    } catch {
-      /* 不允许读剪贴板时，直接在输入框里粘贴 */
-    }
-  };
-  const save = () => {
-    if (!name.trim() && !url) return;
-    const platformLink = url && platformOf(url) !== '官网';
-    onAdd(
-      {
-        id: newId(),
-        name: name.trim() || platformOf(url),
-        where: defaultWhere,
-        type: url ? `${defaultType} · 来自 ${platformOf(url)}` : defaultType,
-        price: d.cost ? `$${d.cost}${costUnit === '每晚' ? '/晚' : ''}` : '价格待定',
-        cost: d.cost || undefined,
-        note: d.note.trim(),
-        picked: false,
-        ...(d.rating.trim() ? { rating: d.rating.trim() } : {}),
-        ...(url ? (platformLink ? { bookingUrl: url } : { url }) : {}),
-      },
-      d.pick,
-    );
-    setD(empty);
-    setOpen(false);
-  };
-
-  if (!open) {
-    return (
-      <button className="add-line" onClick={() => setOpen(true)}>
-        ② 找到喜欢的？粘贴链接加入行程
-      </button>
-    );
-  }
-  return (
-    <div className="form add add-link">
-      <div className="find-head">② 粘贴链接加入行程</div>
-      <div className="row">
-        <input
-          className="grow"
-          autoFocus
-          inputMode="url"
-          placeholder="粘贴 Booking / Airbnb / Tripadvisor / Google 地图 链接"
-          value={d.text}
-          onChange={(e) => take(e.target.value)}
-        />
-        <button type="button" onClick={pasteFromClipboard}>粘贴</button>
-      </div>
-      {url && <p className="muted small">认出来是 {platformOf(url)}{guessed ? `：${guessed}` : '，名字请自己填一下'}</p>}
-      <div className="grid2">
-        <Field label="名称">
-          <input value={name} placeholder="名称" onChange={(e) => setD({ ...d, name: e.target.value })} />
-        </Field>
-        <Field label={`价格（AUD，${costUnit}）`}>
-          <NumInput value={d.cost} onChange={(v) => setD({ ...d, cost: v })} />
-        </Field>
-        <Field label="评分（可选）">
-          <input value={d.rating} placeholder="如 Booking 9.1 / Google 4.6" onChange={(e) => setD({ ...d, rating: e.target.value })} />
-        </Field>
-        <Field label="备注（可选）">
-          <input value={d.note} placeholder="如 两卧、含早餐、可取消" onChange={(e) => setD({ ...d, note: e.target.value })} />
-        </Field>
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={d.pick} onChange={(e) => setD({ ...d, pick: e.target.checked })} />
-        直接选定，计入花费
-      </label>
-      <div className="row">
-        <button className="primary" disabled={!name.trim() && !url} onClick={save}>加入行程</button>
-        <button onClick={() => setOpen(false)}>取消</button>
-      </div>
-    </div>
   );
 }
 

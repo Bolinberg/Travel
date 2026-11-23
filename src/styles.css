@@ -3134,3 +3134,169 @@ a.mini.on {
   margin: 4px 0 0;
   color: var(--amber-ink);
 }
+
+/* 住哪：只需要粘贴链接 */
+.sp {
+  display: grid;
+  gap: 14px;
+}
+.sp-head h3 {
+  margin: 0;
+}
+.sp-head {
+  display: grid;
+  gap: 2px;
+}
+.sp-now {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--amber);
+  background: var(--surface);
+}
+.sp-now.booked {
+  border-left-color: var(--good);
+}
+.sp-name {
+  font-size: 16px;
+}
+.sp-pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.sp-pay label {
+  display: grid;
+  gap: 2px;
+}
+.sp-pay input {
+  width: 140px;
+}
+.sp-step {
+  display: grid;
+  gap: 6px;
+}
+.sp-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sp-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--link);
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+}
+.sp-chip:hover {
+  border-color: var(--sign);
+}
+.sp-paste {
+  display: flex;
+  gap: 8px;
+}
+.sp-paste input {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px dashed var(--sign);
+}
+.sp-added {
+  margin: 0;
+  color: var(--good);
+}
+ul.plain.sp-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+.sp-cand {
+  display: grid;
+  min-width: 0;
+}
+.sp-cand-act {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bk-picker {
+  grid-column: 1 / -1;
+  padding-top: 8px;
+}
+
+/* 手指好点：可点的东西至少 32px 高 */
+button.icon {
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-grid;
+  place-items: center;
+}
+button.mini,
+a.mini {
+  min-height: 32px;
+}
+.next .link,
+.sp .link,
+.bk-actions .link,
+.bk-actions a,
+.dd-plan .link,
+.row.wrap.gap > .link,
+.map-note .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+.masthead .trip-switch {
+  min-height: 32px;
+}
+.plan-line {
+  min-height: 28px;
+}
+.check input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+}
+.sp-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 700;
+}
+.sp-price input {
+  width: 72px;
+  padding: 5px 6px;
+  text-align: right;
+}
+.de-from .link,
+.bk-suggest .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  min-width: 32px;
+  justify-content: center;
+}
+details.advanced > summary,
+details.history > summary {
+  padding: 6px 0;
+}
+.status-btn {
+  min-height: 32px;
+}
+.map-note .link {
+  min-width: 40px;
+}
+.side-map-head .link {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+.plan-line {
+  min-height: 32px;
+}

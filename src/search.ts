@@ -185,7 +185,7 @@ export function nameFromUrl(url: string): string {
   const path = decodeURIComponent(u.pathname);
   const host = u.hostname;
   let m: RegExpMatchArray | null;
-  if (/booking\.com$/.test(host) && (m = path.match(/\/hotel\/[a-z]{2}\/([^/.]+)/))) return titleCase(m[1].replace(/-/g, ' '));
+  if (/booking\.com$/.test(host) && (m = path.match(/\/hotel\/[a-z]{2}\/([^/.]+)/))) return titleCase(m[1].replace(/-amp-/g, ' & ').replace(/-/g, ' '));
   if (/tripadvisor\./.test(host) && (m = path.match(/-Reviews-([^-]+)-/))) return m[1].replace(/_/g, ' ');
   if (/(expedia|wotif)\./.test(host) && (m = path.match(/Hotels-(.+?)\.h\d+/))) return m[1].replace(/-/g, ' ');
   if (/hotels\.com$/.test(host) && (m = path.match(/\/ho\d+\/([^/]+)/))) return titleCase(m[1].replace(/-/g, ' '));

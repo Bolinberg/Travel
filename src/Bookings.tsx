@@ -6,6 +6,7 @@ import { links } from './geo';
 import { newId } from './id';
 import { STAYS_CHECKED } from './stays';
 import { NumInput, short, shortTitle } from './ui';
+import StayPicker from './StayPicker';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -38,8 +39,6 @@ export function stayGroups(trip: Trip) {
   return groups;
 }
 
-const platform = (url: string) =>
-  /wotif/i.test(url) ? 'Wotif' : /expedia/i.test(url) ? 'Expedia' : /airbnb/i.test(url) ? 'Airbnb' : 'Booking.com';
 
 /** 当前住宿的预订链接：选定候选的官网 / 平台页，或备注里写的链接 */
 export function stayLink(trip: Trip, dayIndex: number): string | null {
@@ -323,7 +322,7 @@ function StayRow({ trip, group, update }: { trip: Trip; group: { place: string; 
           )}
           {first.stayOptions.length > 0 && (
             <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? '收起候选' : `看候选（${first.stayOptions.length}）`}
+              {open ? '收起' : '换一家 / 粘贴链接'}
             </button>
           )}
           <a className="link" href={links.booking(first.to, checkin, checkout, trip.adults)} target="_blank" rel="noreferrer">
@@ -336,33 +335,9 @@ function StayRow({ trip, group, update }: { trip: Trip; group: { place: string; 
         <StatusButton status={status} onClick={() => setStatus(next[status])} />
       </div>
       {open && (
-        <ul className="plain stay-options">
-          {first.stayOptions.map((r) => (
-            <li key={r.id} className={r.picked ? 'stay-opt picked' : 'stay-opt'}>
-              <div className="stay-opt-top">
-                <b className="stay-opt-name">{r.name}</b>
-                {r.top && <span className="tag top">推荐</span>}
-              </div>
-              <div className="muted small">{r.type}</div>
-              <div className="stay-opt-meta small">
-                {r.rating && <span className="rating">★ {r.rating}</span>}
-                <span>{r.price}</span>
-              </div>
-              {r.note && <p className="small">{r.note}</p>}
-              <div className="row wrap gap small">
-                {r.url && <a className="link strong" href={r.url} target="_blank" rel="noreferrer">官网 ↗</a>}
-                {r.bookingUrl && (
-                  <a className="link strong" href={r.bookingUrl} target="_blank" rel="noreferrer">{platform(r.bookingUrl)} ↗</a>
-                )}
-                <a className="link" href={links.googleMaps(`${r.name} ${r.where}`)} target="_blank" rel="noreferrer">地图</a>
-                <span className="spacer" />
-                <button className={r.picked ? 'mini on' : 'mini'} onClick={() => pick(r)}>
-                  {r.picked ? '已选 ✓' : '选这家'}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="bk-picker">
+          <StayPicker trip={trip} dayIndex={group.days[0]} update={update} compact />
+        </div>
       )}
     </li>
   );

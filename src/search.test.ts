@@ -43,6 +43,7 @@ describe('认出平台和名字', () => {
   });
   it('名字', () => {
     expect(nameFromUrl('https://www.booking.com/hotel/au/barn-accommodation.html?aid=1')).toBe('Barn Accommodation');
+    expect(nameFromUrl('https://www.booking.com/hotel/au/port-campbell-parkview-motel-amp-apartments.html')).toBe('Port Campbell Parkview Motel & Apartments');
     expect(nameFromUrl('https://www.tripadvisor.com.au/Restaurant_Review-g255096-d123-Reviews-The_Barn_Steakhouse-Mount_Gambier.html')).toBe('The Barn Steakhouse');
     expect(nameFromUrl('https://www.expedia.com.au/Ob-Flat-Hotels-The-Barn.h5947839.Hotel-Information')).toBe('The Barn');
     expect(nameFromUrl('https://www.google.com/maps/place/Robe+Hotel/@-37.1,139.7')).toBe('Robe Hotel');
