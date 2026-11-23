@@ -3396,3 +3396,7 @@ ul.plain.bk-meals > li {
 .paste-box p {
   margin: 0;
 }
+
+.sp-note {
+  color: var(--sign);
+}

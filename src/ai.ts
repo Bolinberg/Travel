@@ -5,6 +5,7 @@ import { findPlace } from './geo';
 import { insertStop } from './route';
 import { newId } from './id';
 import type { ParsedBooking } from './bookingParse';
+import type { ParsedDining } from './diningParse';
 
 /*
  * AI 推荐：在浏览器里直接调用 Claude（Anthropic API），
@@ -665,4 +666,51 @@ export async function aiParseBooking(text: string, year: number): Promise<Partia
   } catch {
     return null;
   }
+}
+
+/** 通用：请 Claude 从一段文字里提取 JSON；没有可用的 Claude 或出错时返回 null */
+async function askJson(prompt: string): Promise<Record<string, unknown> | null> {
+  try {
+    const sample = await claudeSample();
+    if (sample) return await sample.json<Record<string, unknown>>(prompt, { cache: false, modelTier: 'quick' });
+    const settings = loadAiSettings();
+    if (!settings.apiKey.trim()) return null;
+    const client = new Anthropic({ apiKey: settings.apiKey.trim(), dangerouslyAllowBrowser: true });
+    const res = await client.messages.create({
+      model: (AI_MODELS.find((m) => m.id === settings.model) ?? AI_MODELS[0]).id,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const out = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    const json = out.match(/\{[\s\S]*\}/)?.[0];
+    return json ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
+}
+
+const DINING_PROMPT = `下面是用户从网页或邮件复制来的一段餐厅信息（Google 地图 / Tripadvisor 餐厅页，或 OpenTable 等订位确认）。只根据文字内容提取，不要猜测或编造；没有的字段用空字符串或 0。
+只回复一个 JSON 对象，不要其他文字：
+{"name":"餐厅名称（不是客人姓名）","date":"订位日期 YYYY-MM-DD，没有订位就空","time":"HH:MM","party":人数,"rating":"评分和来源，如 Google 4.5（1,284 条）","perPerson":每人大致花费（澳元，按价位或价格区间估）,"total":明确写出的总价或订金,"cuisine":"菜系","address":"地址","confirmation":"订位确认号","confirmed":是否是已确认的订位(true/false)}
+没写年份的日期按 {YEAR} 年。`;
+
+/** 让 Claude 核对餐厅识别结果 */
+export async function aiParseDining(text: string, year: number): Promise<Partial<ParsedDining> | null> {
+  const o = await askJson(`${DINING_PROMPT.replace('{YEAR}', String(year))}\n\n<pasted>\n${text.slice(0, 6000)}\n</pasted>`);
+  if (!o || typeof o !== 'object') return null;
+  const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '');
+  const num = (k: string) => (typeof o[k] === 'number' && Number.isFinite(o[k]) ? (o[k] as number) : 0);
+  return {
+    name: str('name'),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(str('date')) ? str('date') : '',
+    time: /^\d{2}:\d{2}$/.test(str('time')) ? str('time') : '',
+    party: Math.round(num('party')),
+    rating: str('rating'),
+    perPerson: num('perPerson'),
+    total: num('total'),
+    cuisine: str('cuisine'),
+    address: str('address'),
+    confirmation: str('confirmation'),
+    confirmed: o.confirmed === true,
+  };
 }

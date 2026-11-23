@@ -5,7 +5,7 @@ import { newId } from './id';
 import { childAges, short } from './ui';
 import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks } from './search';
 import { pickStay, stayGroups, stayLabel } from './Bookings';
-import { usePasteBooking } from './PasteBooking';
+import { usePasteBooking, usePasteDining } from './PasteBooking';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -349,7 +349,14 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
       if (d) mutate(d.dining);
     });
 
+  const pastedMeal = usePasteDining(trip, update);
   const takeText = (text: string) => {
+    // 整段餐厅页面 / 订位确认：认出名称、评分、价位、订位时间和确认号
+    if (pastedMeal.handle(text, dayIndex)) {
+      setAdded('');
+      setPaste('');
+      return;
+    }
     const { url, title } = extractUrl(text);
     if (!url) {
       setPaste(text);
@@ -412,14 +419,12 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
                       <b>{r.name}</b>
                       <span className="muted small">
                         {r.rating ? `★ ${r.rating} · ` : ''}
-                        {l ? '' : r.type}
+                        {r.type && !/^来自 /.test(r.type) ? `${r.type} · ` : ''}
                         {l && (
-                          <>
-                            {r.rating ? '' : ''}
-                            <a className="link" href={l} target="_blank" rel="noreferrer">{platformOf(l)} ↗</a>
-                          </>
+                          <a className="link" href={l} target="_blank" rel="noreferrer">{platformOf(l)} ↗</a>
                         )}
                       </span>
+                      {r.note && <span className="small sp-note">{r.note}</span>}
                     </div>
                     <div className="sp-cand-act">
                       <a
@@ -486,23 +491,30 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
       </div>
 
       <div className="sp-step">
-        <div className="find-head">② 看中了？把链接粘贴到这里，就加入这天</div>
+        <div className="find-head">② 看中了或订好了？把链接或整段信息粘贴到这里</div>
         <div className="sp-paste">
-          <input
-            aria-label="粘贴餐厅链接"
-            inputMode="url"
-            placeholder="粘贴 Tripadvisor / Google 地图 / OpenTable 链接"
+          <textarea
+            aria-label="粘贴餐厅链接或信息"
+            rows={2}
+            placeholder="粘贴链接，或 Google 地图 / Tripadvisor 餐厅页、OpenTable 订位确认的整段文字（自动认出名称、评分、价位和订位信息）"
             value={paste}
             onPaste={(e) => {
               e.preventDefault();
               takeText(e.clipboardData.getData('text'));
             }}
             onChange={(e) => setPaste(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && takeText(paste)}
           />
-          <button onClick={pasteFromClipboard}>粘贴</button>
+          <div className="sp-paste-btns">
+            <button onClick={pasteFromClipboard}>粘贴</button>
+            {paste.trim() && (
+              <button className="primary" onClick={() => takeText(paste)}>加入</button>
+            )}
+          </div>
         </div>
-        {added && <p className="small sp-added">已加入「{added}」。知道价格的话填在上面，会计入花费。</p>}
+        {added && <p className="small sp-added">已加入「{added}」。知道价格的话填在上面，会计入花费；也可以把餐厅页面整段粘贴进来自动认出价位。</p>}
+        {pastedMeal.busy && <p className="small muted">Claude 正在核对…</p>}
+        {pastedMeal.message && <p className="small sp-added">{pastedMeal.message}</p>}
+        {pastedMeal.warn && <p className="small warn-text">{pastedMeal.warn}</p>}
       </div>
 
       {others.length > 0 && (

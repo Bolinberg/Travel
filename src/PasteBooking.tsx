@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { Rec, Trip } from './types';
 import { addDays, formatDate, money } from './calc';
 import { newId } from './id';
-import { aiParseBooking } from './ai';
+import { aiParseBooking, aiParseDining } from './ai';
+import { looksLikeDining, parseDiningText, type ParsedDining } from './diningParse';
 import { looksLikeBookingText, parseBookingText, type ParsedBooking } from './bookingParse';
 import { nameFromUrl, platformOf } from './search';
 import { stayGroups } from './Bookings';
@@ -143,22 +144,133 @@ export function usePasteBooking(trip: Trip, update: Update) {
   return { handle, message, warn, busy };
 }
 
-/** 「预订」页顶部：粘贴任何一份住宿预订确认，自动对上是哪一晚 */
+/* ---------------- 餐厅 ---------------- */
+
+/** 这顿饭估多少钱：写了总价按总价，否则按每人价位 × 人数 */
+const mealCost = (p: ParsedDining, people: number) => p.total || (p.perPerson ? p.perPerson * (p.party || people) : 0);
+
+/** 把识别出的餐厅加进某一天：想去（计入花费）；是订位确认就标记已订 */
+export function applyParsedDining(t: Trip, dayIndex: number, p: ParsedDining, recId: string): string {
+  const d = t.days[dayIndex];
+  const name = p.name || nameFromUrl(p.url) || (p.url ? `${platformOf(p.url)} 上的餐厅` : '粘贴的餐厅');
+  let r = d.dining.find((x) => x.id === recId) ?? d.dining.find((x) => x.name === name);
+  if (!r) {
+    r = { id: recId, name, where: short(d.to), type: '', price: '', note: '', picked: true } as Rec;
+    d.dining.unshift(r);
+  }
+  const cost = mealCost(p, t.adults + t.children);
+  r.name = name;
+  r.picked = true;
+  r.type = [p.cuisine, p.priceLevel].filter(Boolean).join(' · ') || r.type || '餐厅';
+  r.price = p.priceLevel || r.price;
+  if (cost) r.cost = cost;
+  if (p.rating) r.rating = p.rating;
+  if (p.confirmed) r.booked = true;
+  r.note = [
+    p.confirmed && `订位 ${p.time || ''}${p.party ? ` · ${p.party} 人` : ''}`.trim(),
+    p.confirmation && `确认号 ${p.confirmation}`,
+    p.address,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  if (p.url) {
+    if (platformOf(p.url) === '官网') r.url = p.url;
+    else r.bookingUrl = p.url;
+  }
+  return name;
+}
+
+function diningSummary(trip: Trip, dayIndex: number, p: ParsedDining, name: string): string {
+  const cost = mealCost(p, trip.adults + trip.children);
+  const bits = [
+    `「${name}」`,
+    `第 ${dayIndex + 1} 天 ${formatDate(addDays(trip.startDate, dayIndex))}${p.time ? ` ${p.time}` : ''}`,
+    p.rating && `★ ${p.rating}`,
+    cost ? `这顿约 ${money(cost)}${p.total ? '' : `（${p.priceLevel || '按价位'}估）`}` : '没认出价格，可以在列表里填',
+    p.confirmation && `确认号 ${p.confirmation}`,
+  ].filter(Boolean);
+  return `${bits.join(' · ')} → 已加入这天${p.confirmed ? '，并标记已订位' : ''}`;
+}
+
+/** 粘贴餐厅页面或订位确认：先按规则填好，再请 Claude 核对 */
+export function usePasteDining(trip: Trip, update: Update) {
+  const [message, setMessage] = useState('');
+  const [warn, setWarn] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const dayOf = (date: string, fallback?: number) => {
+    const i = date ? trip.days.findIndex((_, k) => addDays(trip.startDate, k) === date) : -1;
+    return i >= 0 ? i : fallback;
+  };
+
+  const handle = (text: string, fallbackDay?: number): boolean => {
+    if (!looksLikeBookingText(text)) return false;
+    const year = Number(trip.startDate.slice(0, 4)) || new Date().getFullYear();
+    const p = parseDiningText(text, year);
+    const day = dayOf(p.date, fallbackDay);
+    if (day === undefined) {
+      setWarn(
+        p.date
+          ? `这份订位是 ${formatDate(p.date)}，不在行程日期里。请到对应那天的「吃饭」里粘贴。`
+          : '没认出是哪一天（餐厅页面没有日期），请到那天的「吃饭」里粘贴。',
+      );
+      setMessage('');
+      return true;
+    }
+    const recId = newId();
+    let name = '';
+    update((t) => void (name = applyParsedDining(t, day, p, recId)));
+    name = name || p.name || nameFromUrl(p.url) || '粘贴的餐厅';
+    setWarn(p.date && fallbackDay !== undefined && day !== fallbackDay ? `订位日期是 ${formatDate(p.date)}，已放到第 ${day + 1} 天。` : '');
+    setMessage(diningSummary(trip, day, p, name));
+
+    setBusy(true);
+    aiParseDining(text, year).then((ai) => {
+      setBusy(false);
+      if (!ai) return;
+      const merged: ParsedDining = {
+        ...p,
+        ...Object.fromEntries(Object.entries(ai).filter(([, v]) => v !== '' && v !== 0 && v !== undefined)),
+        confirmed: p.confirmed || !!ai.confirmed,
+        url: p.url,
+      };
+      const changed = (['name', 'date', 'party', 'perPerson', 'total', 'confirmation', 'rating'] as const).filter((k) => merged[k] !== p[k]);
+      if (!changed.length) {
+        setMessage((m) => `${m}（Claude 已核对）`);
+        return;
+      }
+      const d2 = dayOf(merged.date, day) ?? day;
+      if (d2 !== day) update((t) => void (t.days[day].dining = t.days[day].dining.filter((x) => x.id !== recId)));
+      let n2 = '';
+      update((t) => void (n2 = applyParsedDining(t, d2, merged, recId)));
+      setMessage(`${diningSummary(trip, d2, merged, n2 || merged.name)}（Claude 核对后更正了 ${changed.length} 处）`);
+    });
+    return true;
+  };
+
+  return { handle, message, warn, busy };
+}
+
+/** 「预订」页顶部：粘贴任何一份住宿预订确认或餐厅订位，自动对上是哪一天 */
 export function PasteBookingBox({ trip, update }: { trip: Trip; update: Update }) {
   const [text, setText] = useState('');
-  const { handle, message, warn, busy } = usePasteBooking(trip, update);
+  const stay = usePasteBooking(trip, update);
+  const meal = usePasteDining(trip, update);
+  const [last, setLast] = useState<'stay' | 'meal'>('stay');
+  const { message, warn, busy } = last === 'stay' ? stay : meal;
   const go = (v: string) => {
-    if (handle(v)) setText('');
+    const kind = looksLikeDining(v) ? 'meal' : 'stay';
+    setLast(kind);
+    if ((kind === 'meal' ? meal : stay).handle(v)) setText('');
     else setText(v);
   };
-  // 只粘贴了链接：提示去对应那天粘贴（链接里没有日期，认不出是哪一晚）
   return (
     <section className="paste-box" aria-labelledby="paste-head">
-      <div id="paste-head" className="find-head">订好了？把确认邮件或订单页面的文字整段粘贴到这里</div>
+      <div id="paste-head" className="find-head">订好了？把确认邮件或订单页面的文字整段粘贴到这里（住宿、餐厅都行）</div>
       <textarea
         aria-label="粘贴预订确认"
         rows={2}
-        placeholder="从 Booking / Airbnb / 携程 / 官网 的确认邮件里全选复制，粘贴进来。会自动认出名称、日期、总价和确认号，对上是哪一晚并标记已订。"
+        placeholder="从 Booking / Airbnb / 携程 / OpenTable / 官网 的确认邮件里全选复制，粘贴进来。会自动认出名称、日期、价格和确认号，对上是哪一天并标记已订。"
         value={text}
         onPaste={(e) => {
           e.preventDefault();
