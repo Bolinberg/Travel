@@ -14,7 +14,7 @@ import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from 
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, routeKey } from './autoRoute';
 import StayPicker, { DiningPicker, PlatformChips } from './StayPicker';
-import { MORE_TICKET_PLATFORMS, ticketSearchLinks } from './search';
+import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, transportLinks } from './search';
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
@@ -787,6 +787,18 @@ function DayDetail({
               <div className="row wrap gap small">
                 <button className="link" onClick={onMap}>在地图上看</button>
                 <a className="link" href={googleDirections(day)} target="_blank" rel="noreferrer">Google 地图导航 ↗</a>
+              </div>
+              <div className="sp-step">
+                <div className="find-head">{hasFerry(day) ? '渡轮 / 交通' : day.from === day.to || dayMode(day) === 'walk' ? '市内交通' : '路上'}</div>
+                <PlatformChips
+                  links={transportLinks(day.from, day.to, {
+                    ferry: hasFerry(day),
+                    city: day.from === day.to || dayMode(day) === 'walk',
+                    date: addDays(trip.startDate, index),
+                  })}
+                  kind="transport"
+                  infos={MORE_TRANSPORT_PLATFORMS}
+                />
               </div>
             </div>
           )}

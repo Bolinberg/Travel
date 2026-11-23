@@ -214,13 +214,74 @@ export function ticketSearchLinks(query: string, place = ''): SearchLink[] {
   ];
 }
 
+/* ---------------- 渡轮 / 交通 ---------------- */
+
+export const MORE_TRANSPORT_PLATFORMS: PlatformInfo[] = [
+  { key: 'ferry', label: 'SeaLink 官网', about: '去袋鼠岛唯一的汽车渡轮，只有官网能订带车的船票；12 月旺季早订' },
+  { key: 'ferry-deal', label: '渡轮套餐', about: 'Experience Oz 等平台有「渡轮 + 住宿 / 一日游」组合，偶尔比单买便宜' },
+  { key: 'fly-ki', label: '飞袋鼠岛', about: '阿德莱德 → Kingscote 约 30 分钟（Qantas / Rex），不带车时可以考虑，到岛上再租车' },
+  { key: 'rome2rio', label: 'Rome2rio', about: '两地之间开车、坐车、飞机、渡轮的方式和时间一次比完' },
+  { key: 'roads', label: '路况', about: '州政府实时路况：封路、施工、山火和洪水；出发当天看一眼（维州 VicTraffic / 南澳 Traffic SA）' },
+  { key: 'fuel', label: '油价', about: 'PetrolSpy 地图查附近油价，偏远路段加油站少，见到便宜的就加满' },
+  { key: 'rest', label: '休息区', about: '公路休息区和厕所位置，带孩子每 2 小时停一次' },
+  { key: 'parking', label: '停车', about: 'Wilson / Secure Parking 网上预订市区停车场，比现场便宜' },
+  { key: 'metro', label: '公交电车', about: 'Adelaide Metro：市中心电车免费，坐电车去 Glenelg 海边；墨尔本用 PTV' },
+  { key: 'ride', label: '打车', about: 'Uber、DiDi、13cabs 都在澳洲正规运营，市区里短途方便' },
+  { key: 'club', label: 'RAA / RACV 会员', about: '道路救援会员：渡轮、加油、停车常有会员价，路上车坏了也靠它' },
+];
+export const DEFAULT_TRANSPORT_PLATFORMS = ['ferry', 'fly-ki', 'roads', 'roads-sa', 'fuel', 'rest', 'parking', 'metro'];
+
+/** 某一天的交通平台：自驾日看路况油价休息区，渡轮日看渡轮和飞机，城市日看公交停车打车 */
+export function transportLinks(from: string, to: string, opts: { ferry?: boolean; city?: boolean; date?: string } = {}): SearchLink[] {
+  const a = placeQuery(from);
+  const b = placeQuery(to);
+  const sa = /South Australia/.test(b) || /South Australia/.test(a);
+  const vic = /Victoria/.test(a) || /Victoria/.test(b);
+  const town = (s: string) => s.split(',')[0].trim();
+  const g = (s: string) => 'https://www.google.com/search?' + qs({ q: s });
+  const links: SearchLink[] = [];
+  if (opts.ferry) {
+    links.push(
+      { key: 'ferry', label: 'SeaLink 官网', hint: '带车渡轮', href: 'https://www.sealink.com.au/kangaroo-island/' },
+      { key: 'ferry-deal', label: '渡轮套餐', hint: '组合优惠', href: g('site:experienceoz.com.au SeaLink Kangaroo Island') },
+      {
+        key: 'fly-ki',
+        label: '飞袋鼠岛',
+        hint: 'Qantas / Rex',
+        href: 'https://www.google.com/travel/flights?' + qs({ q: `Flights from Adelaide to Kingscote${opts.date ? ` on ${opts.date}` : ''}` }),
+      },
+    );
+  }
+  if (!opts.city && a !== b) {
+    links.push(
+      { key: 'roads', label: '路况', hint: '封路施工', href: sa && !vic ? 'https://traffic.sa.gov.au/' : vic && !sa ? 'https://traffic.vicroads.vic.gov.au/' : 'https://traffic.vicroads.vic.gov.au/' },
+      ...(sa && vic ? [{ key: 'roads-sa', label: '南澳路况', hint: '封路施工', href: 'https://traffic.sa.gov.au/' }] : []),
+      { key: 'fuel', label: '油价', hint: 'PetrolSpy', href: 'https://petrolspy.com.au/' },
+      { key: 'rest', label: '休息区', hint: '沿途', href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(`rest area between ${town(a)} and ${town(b)}`) },
+      { key: 'rome2rio', label: 'Rome2rio', hint: '各种走法', href: `https://www.rome2rio.com/map/${encodeURIComponent(town(a))}/${encodeURIComponent(town(b))}` },
+    );
+  }
+  if (opts.city || a === b) {
+    const t = town(b);
+    links.push(
+      ...(/Adelaide/.test(t) ? [{ key: 'metro', label: 'Adelaide Metro', hint: '电车免费区', href: 'https://www.adelaidemetro.com.au/' }] : []),
+      ...(/Melbourne|Point Cook/.test(t) ? [{ key: 'metro', label: 'PTV', hint: '墨尔本公交', href: 'https://www.ptv.vic.gov.au/' }] : []),
+      { key: 'parking', label: '停车', hint: 'Wilson / Secure', href: g(`${t} parking booking Wilson Secure Parking`) },
+      { key: 'ride', label: '打车', hint: 'Uber / DiDi / 13cabs', href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(`taxi ${t}`) },
+    );
+  }
+  links.push({ key: 'club', label: sa ? 'RAA 会员' : 'RACV 会员', hint: '会员价', href: g(`${sa ? 'site:raa.com.au' : 'site:racv.com.au'} member discount ${opts.ferry ? 'SeaLink' : 'fuel parking'}`) });
+  return links;
+}
+
 /** 默认显示的平台（其余在「更多平台」里，可以设为常用） */
 export const DEFAULT_STAY_PLATFORMS = ['booking', 'airbnb', 'wotif', 'tripadvisor', 'google'];
 export const DEFAULT_DINING_PLATFORMS = ['tripadvisor', 'google', 'google-family', 'opentable'];
-const PREF_KEYS = { stay: 'travel-planner.platforms', dining: 'travel-planner.platforms.dining', ticket: 'travel-planner.platforms.ticket' };
+const PREF_KEYS = { stay: 'travel-planner.platforms', dining: 'travel-planner.platforms.dining', ticket: 'travel-planner.platforms.ticket', transport: 'travel-planner.platforms.transport' };
 export type PlatformKind = keyof typeof PREF_KEYS;
 export function loadPlatformPrefs(kind: PlatformKind = 'stay'): string[] {
-  const def = kind === 'stay' ? DEFAULT_STAY_PLATFORMS : kind === 'dining' ? DEFAULT_DINING_PLATFORMS : DEFAULT_TICKET_PLATFORMS;
+  const def =
+    kind === 'stay' ? DEFAULT_STAY_PLATFORMS : kind === 'dining' ? DEFAULT_DINING_PLATFORMS : kind === 'ticket' ? DEFAULT_TICKET_PLATFORMS : DEFAULT_TRANSPORT_PLATFORMS;
   try {
     const v = JSON.parse(localStorage.getItem(PREF_KEYS[kind]) ?? 'null');
     return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : def;
@@ -311,6 +372,12 @@ export function platformOf(url: string): string {
   if (/kayak\./.test(host)) return 'Kayak';
   if (/goodfood\.com\.au$/.test(host)) return 'Good Food Guide';
   if (/getyourguide\./.test(host)) return 'GetYourGuide';
+  if (/sealink\.com\.au$/.test(host)) return 'SeaLink';
+  if (/rome2rio\.com$/.test(host)) return 'Rome2rio';
+  if (/petrolspy\.com\.au$/.test(host)) return 'PetrolSpy';
+  if (/wilsonparking\.com\.au$/.test(host)) return 'Wilson Parking';
+  if (/secureparking\.com\.au$/.test(host)) return 'Secure Parking';
+  if (/adelaidemetro\.com\.au$/.test(host)) return 'Adelaide Metro';
   if (/viator\.com$/.test(host)) return 'Viator';
   if (/klook\.com$/.test(host)) return 'Klook';
   if (/experienceoz\.com\.au$/.test(host)) return 'Experience Oz';

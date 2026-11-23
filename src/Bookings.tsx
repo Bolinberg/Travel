@@ -4,7 +4,7 @@ import { CATEGORY_LABELS } from './types';
 import { addDays, dayCosts, foodStandard, formatDate, money, pickedDiningCost, summarize } from './calc';
 import { newId } from './id';
 import { short, shortTitle } from './ui';
-import { extractUrl, nameFromUrl, platformOf, ticketSearchLinks } from './search';
+import { extractUrl, nameFromUrl, platformOf, ticketSearchLinks, transportLinks } from './search';
 import StayPicker from './StayPicker';
 import { classifyPaste, PasteBookingBox, usePasteBooking, usePasteDining, usePasteTicket } from './PasteBooking';
 import { looksLikeBookingText } from './bookingParse';
@@ -434,10 +434,16 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
         {x.kind === 'ticket' && !x.booked && (() => {
           const known = KNOWN_TICKETS.find((k) => k.match.test(x.title));
           const q = known?.en ?? shortTitle(x.title);
-          const alt = ticketSearchLinks(q).filter((l) => ['gyg', 'klook', 'viator', 'experienceoz', 'club'].includes(l.key));
+          const isFerry = known?.kind === 'ferry';
+          const isTransport = isFerry || /停车|parking|交通|车|toll|过路/i.test(x.title);
+          const alt = isFerry
+            ? transportLinks('Adelaide SA', 'Vivonne Bay SA', { ferry: true }).filter((l) => ['ferry-deal', 'fly-ki', 'club'].includes(l.key))
+            : isTransport
+              ? transportLinks(trip.days[x.dayIndex]?.to ?? 'Adelaide SA', trip.days[x.dayIndex]?.to ?? 'Adelaide SA', { city: true }).filter((l) => ['parking', 'metro', 'club'].includes(l.key))
+              : ticketSearchLinks(q).filter((l) => ['gyg', 'klook', 'viator', 'experienceoz', 'club'].includes(l.key));
           return (
             <div className="bk-alt small">
-              <span className="muted">比价找票：</span>
+              <span className="muted">{isTransport ? '比价 / 其他方式：' : '比价找票：'}</span>
               {alt.map((l) => (
                 <a key={l.key} className="link" href={l.href} target="_blank" rel="noreferrer">{l.label}</a>
               ))}

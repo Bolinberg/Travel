@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diningSearchLinks, ticketSearchLinks, extractUrl, isBookingPlatform, nameFromUrl, placeQuery, platformOf, staySearchLinks } from './search';
+import { diningSearchLinks, ticketSearchLinks, transportLinks, extractUrl, isBookingPlatform, nameFromUrl, placeQuery, platformOf, staySearchLinks } from './search';
 
 describe('平台搜索链接', () => {
   it('Booking.com 带日期、人数、小孩年龄，按好评排序并筛 8 分以上', () => {
@@ -57,6 +57,18 @@ describe('平台搜索链接', () => {
     const vic = ticketSearchLinks('Grampians', 'Halls Gap VIC');
     expect(new URL(vic.find((l) => l.key === 'club')!.href).searchParams.get('q')).toContain('racv.com.au');
     expect(platformOf('https://www.getyourguide.com/x')).toBe('GetYourGuide');
+  });
+  it('交通：自驾日 / 渡轮日 / 城市日给的平台不同', () => {
+    const drive = transportLinks('Point Cook VIC', 'Mount Gambier SA').map((l) => l.key);
+    expect(drive).toEqual(expect.arrayContaining(['roads', 'roads-sa', 'fuel', 'rest', 'rome2rio', 'club']));
+    expect(drive).not.toContain('ferry');
+    const ferry = transportLinks('Adelaide SA', 'Vivonne Bay SA', { ferry: true, date: '2026-12-15' });
+    expect(ferry.map((l) => l.key)).toEqual(expect.arrayContaining(['ferry', 'ferry-deal', 'fly-ki']));
+    expect(new URL(ferry.find((l) => l.key === 'fly-ki')!.href).searchParams.get('q')).toBe('Flights from Adelaide to Kingscote on 2026-12-15');
+    const city = transportLinks('Adelaide SA', 'Adelaide SA', { city: true }).map((l) => l.key);
+    expect(city).toEqual(expect.arrayContaining(['metro', 'parking', 'ride']));
+    expect(city).not.toContain('fuel');
+    expect(platformOf('https://www.sealink.com.au/kangaroo-island/')).toBe('SeaLink');
   });
   it('餐厅搜索和订位人数', () => {
     const links = diningSearchLinks('Adelaide SA', '2026-12-14', 4);
