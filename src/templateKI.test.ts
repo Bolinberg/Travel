@@ -108,14 +108,14 @@ describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () =
   });
 });
 
-import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_C } from './templateKI';
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_C, COMPARE_D, TRIP_START } from './templateKI';
 import { versionTrip } from './versions';
 
 describe('route comparison A vs B from Point Cook', () => {
   const t = createRouteComparisonTrip();
   const [va, vb] = t.versions!.slice().reverse();
   it('holds both routes as proposals', () => {
-    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A, COMPARE_C]);
+    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A, COMPARE_C, COMPARE_D]);
     const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
     const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
     expect(a.days).toHaveLength(7);
@@ -179,6 +179,43 @@ describe('方案 C：去程住 Apollo Bay 和蓝湖', () => {
     const up = upgradeComparison(old);
     expect(up.versions!.some((v) => v.label === COMPARE_C)).toBe(true);
     expect(up.activePlan).toBe(old.activePlan);
+    expect(upgradeComparison(up)).toBe(up);
+  });
+});
+
+describe('方案 D：按家里的需求定制', () => {
+  const t = createRouteComparisonTrip();
+  const d = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_D)!);
+  it('12/12 周六出发、12/20 周日到家，共 9 天', () => {
+    expect(t.startDate).toBe(TRIP_START);
+    expect(new Date(TRIP_START + 'T00:00').getDay()).toBe(6);
+    expect(d.days).toHaveLength(9);
+    expect(d.days[8].to).toBe('Point Cook VIC');
+  });
+  it('只有一天超过 6 小时；必去的都在', () => {
+    expect(d.days.filter((x) => x.driveHours > 6)).toHaveLength(1);
+    const all = d.days.flatMap((x) => [x.to, ...x.stops]);
+    for (const p of ['Twelve Apostles VIC', 'Blue Lake, Mount Gambier SA', 'Adelaide Zoo SA', 'South Australian Museum SA']) expect(all).toContain(p);
+    expect(d.days.filter((x) => x.to === 'Vivonne Bay SA' && x.accommodation)).toHaveLength(2);
+    expect(d.days.filter((x) => x.to === 'Halls Gap VIC' && x.accommodation)).toHaveLength(2);
+    expect(d.days.filter((x) => x.to === 'Adelaide SA' && x.accommodation)).toHaveLength(2);
+  });
+  it('每晚都选好了带厨房的住宿', () => {
+    for (const x of d.days.filter((y) => y.accommodation)) {
+      expect(x.stayOptions.some((r) => r.picked), x.to).toBe(true);
+      expect(x.accommodation!.name).not.toMatch(/住宿/);
+    }
+  });
+  it('新设备默认打开 D；已有对比的设备补上 D 并切换过去', () => {
+    expect(t.versions!.find((v) => v.id === t.activePlan)!.label).toBe(COMPARE_D);
+    const old = structuredClone(t);
+    old.versions = old.versions!.filter((v) => v.label !== COMPARE_D);
+    old.activePlan = old.versions.find((v) => v.label === COMPARE_B)!.id;
+    old.startDate = '2026-12-19';
+    const up = upgradeComparison(old);
+    expect(up.versions!.find((v) => v.id === up.activePlan)!.label).toBe(COMPARE_D);
+    expect(up.startDate).toBe(TRIP_START);
+    expect(up.days).toHaveLength(9);
     expect(upgradeComparison(up)).toBe(up);
   });
 });

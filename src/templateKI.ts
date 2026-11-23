@@ -3,8 +3,8 @@ import { newId } from './id';
 import { DEFAULT_PLACES } from './places';
 import { GUIDES } from './guides';
 import { genericChecklist } from './defaultTrip';
-import { addVersion, snapshot } from './versions';
-import { applyVerifiedStays } from './stays';
+import { addVersion, snapshot, switchPlan } from './versions';
+import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 
 /*
  * 6 天方案：墨尔本 → 大洋路 → Port Fairy → 甘比尔山 → Robe → 库隆 → 阿德莱德 → 袋鼠岛 → 阿德莱德
@@ -510,6 +510,20 @@ export const COMPARE_NAME = 'Point Cook 出发 · A/B 路线对比';
 export const COMPARE_A = 'A：直达蓝湖、袋鼠岛 1 晚（7 天）';
 export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
 export const COMPARE_C = 'C：住 Apollo Bay、蓝湖（9 天）';
+export const COMPARE_D = 'D：按需求定制 · 格兰扁 2 晚（9 天）';
+/** 家里定下的日期：12/12（六）出发，12/20（日）回家 */
+export const TRIP_START = '2026-12-12';
+
+/** 按名字选定某天的住宿（模板用，不依赖界面代码） */
+function choose(d: Day, name: string) {
+  const r = d.stayOptions.find((x) => x.name === name);
+  if (!r || !d.accommodation) return;
+  d.stayOptions.forEach((x) => (x.picked = x === r));
+  d.accommodation.name = r.name;
+  if (r.cost) d.accommodation.cost = r.cost;
+  const link = r.bookingUrl || r.url;
+  if (link && !d.accommodation.notes.includes(link)) d.accommodation.notes = `预订：${link}`;
+}
 
 const POINT_COOK: Place = {
   name: 'Point Cook VIC', label: 'Point Cook（家）', lat: -37.9148, lng: 144.7509, wiki: 'Point Cook, Victoria',
@@ -606,17 +620,77 @@ export function createRouteComparisonTrip(): Trip {
     expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? cIdMap.get(e.dayId) ?? null : null })),
   };
 
+  /*
+   * D：按家里的需求定制（12/12 周六 – 12/20 周日，9 天）
+   * - 只有第 1 天是长途（大洋路全程 + 十二门徒岩直达蓝湖，约 7.9 小时），换来其他日子轻松
+   * - 阿德莱德 2 晚（一整天看熊猫、博物馆），袋鼠岛 2 晚，回程经格兰扁并住 2 晚
+   * - 住宿都选带厨房的公寓 / 整套房
+   */
+  const d1 = clone(a1);
+  d1.notes =
+    '全程唯一的长途日：12/12 周六早上 7 点出发，纯开车约 7.9 小时，加上停 Torquay、Lorne（午餐）和十二门徒岩，路上 10–11 小时。孩子在车上的时间长，带好零食、耳机和晕车药；十二门徒岩和 Loch Ard Gorge 是这一天的重点，其他点可以少停。Port Fairy 之后正是黄昏，注意路上的袋鼠。进入南澳前处理掉新鲜水果蔬菜；南澳慢 30 分钟。';
+  const d2 = clone(a2);
+  d2.notes = '12/13 周日：早上再看一眼蓝湖（12 月是最蓝的时候），走内陆约 5.4 小时，Hahndorf 德国村晚饭后进阿德莱德。';
+  const [dCity, dToKI, dKiDay, dLeaveKI, dToGrampians] = b.days.slice(3, 8).map(clone);
+  dCity.notes =
+    '12/14 周一，全天不开车：9:30 动物园开门先看熊猫（家庭约 3 小时）→ 穿过植物园吃午饭 → 下午南澳博物馆（免费，恐龙和鲸鱼骨架）→ 体力够再去隔壁美术馆。中央市场周一不开。傍晚可坐电车去 Glenelg 海边。';
+  dToGrampians.accommodation = stay('Halls Gap 住宿（连住 2 晚）', 260);
+  const dGrampians = day(
+    '格兰扁一整天：Pinnacle · MacKenzie Falls', 'Halls Gap VIC', 'Halls Gap VIC', 50, 1,
+    ['The Pinnacle Lookout, Grampians VIC', 'MacKenzie Falls VIC'],
+    stay('Halls Gap 住宿（第 2 晚）', 260),
+    '12/19 周六，不赶路：上午从 Sundial 停车场走 Pinnacle 步道（往返约 4 km，10 岁、8 岁的孩子约 2 小时），回镇上午饭；下午去 MacKenzie Falls（下到瀑布底要走不少台阶，也可以只到观景台）。傍晚 Halls Gap 镇中心的草地上常有成群袋鼠。夏天高温或山火警告时步道可能关闭，出发前看 Parks Victoria 网站。',
+    pick('Halls Gap', 'stay'), pick('Halls Gap', 'dining', '晚餐'),
+  );
+  const dHome = day(
+    '格兰扁 → Ballarat → 回家', 'Halls Gap VIC', 'Point Cook VIC', 248, 3.3,
+    ['Ballarat VIC'],
+    null,
+    '12/20 周日回家，约 3.3 小时。时间够的话在 Ballarat 停半天去 Sovereign Hill 淘金镇（孩子可以淘金、看旧时小镇，门票较贵，需半天），晚饭前到家。',
+    [], pick('Ballarat', 'dining', '午餐'),
+  );
+  const dDays = [d1, d2, dCity, dToKI, dKiDay, dLeaveKI, dToGrampians, dGrampians, dHome];
+  const dIdMap = new Map(b.days.slice(3, 8).map((x, i) => [x.id, [dCity, dToKI, dKiDay, dLeaveKI, dToGrampians][i].id]));
+  const dPlaces = [...b.places];
+  for (const p of [
+    { name: 'MacKenzie Falls VIC', label: 'MacKenzie Falls 瀑布', lat: -37.1092, lng: 142.4183, wiki: 'MacKenzie Falls', desc: '格兰扁最有名的瀑布，下到瀑布底的步道陡、台阶多；不想走可以到上方观景台。' },
+  ]) if (!dPlaces.some((x) => x.name === p.name)) dPlaces.push(p);
+  const dTrip: Trip = {
+    ...structuredClone(b),
+    id: b.id,
+    startDate: TRIP_START,
+    days: dDays,
+    places: dPlaces,
+    expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? dIdMap.get(e.dayId) ?? null : null })),
+  };
+  // 住宿：都选带厨房的公寓 / 整套房（可以在「住宿」里换）
+  for (const x of dTrip.days) applyVerifiedStaysToDay(x);
+  const kitchen: Record<string, string> = {
+    'Mount Gambier SA': 'The Barn Accommodation',
+    'Adelaide SA': 'Majestic Old Lion Apartments',
+    'Vivonne Bay SA': 'Island Time at Vivonne Bay',
+    'Tailem Bend SA': 'Motel River Bend',
+    'Halls Gap VIC': 'Halls Gap Valley Lodges',
+  };
+  for (const x of dTrip.days) if (kitchen[x.to]) choose(x, kitchen[x.to]);
+
   const snapA = snapshot(a);
   const snapB = snapshot(b);
   const snapC = snapshot(c);
+  const snapD = snapshot(dTrip);
   b.versions = [];
   // 列表里新的在上：先加 B 再加 A，对比表里 A 在左、B 在右
   const vb = addVersion(b, COMPARE_B, 'proposal', snapB);
   addVersion(b, COMPARE_A, 'proposal', snapA);
   addVersion(b, COMPARE_C, 'proposal', snapC);
+  const vd = addVersion(b, COMPARE_D, 'proposal', snapD);
   b.activePlan = vb.id;
   b.name = COMPARE_NAME;
-  return applyVerifiedStays(b);
+  // 新设备直接打开按需求定制的 D，日期用家里定的 12/12
+  const out = switchPlan(applyVerifiedStays(b), vd.id);
+  out.startDate = TRIP_START;
+  for (const v of out.versions ?? []) v.snapshot.startDate = TRIP_START;
+  return out;
 }
 
 /**
@@ -624,7 +698,22 @@ export function createRouteComparisonTrip(): Trip {
  * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
  */
 export function upgradeComparison(trip: Trip): Trip {
-  return addPlanC(upgradeA(trip));
+  return addPlanD(addPlanC(upgradeA(trip)));
+}
+
+/**
+ * 按家里确认的需求补上方案 D，并切换到 D；日期统一改成 12/12 出发（家里定的）。
+ * 切换前当前内容会存回原来的方案，随时可以切回。
+ */
+function addPlanD(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME || trip.versions?.some((v) => v.label === COMPARE_D)) return trip;
+  const freshD = createRouteComparisonTrip().versions!.find((v) => v.label === COMPARE_D)!;
+  let t: Trip = structuredClone(trip);
+  const added = addVersion(t, COMPARE_D, 'proposal', structuredClone(freshD.snapshot));
+  t = switchPlan(t, added.id);
+  t.startDate = TRIP_START;
+  for (const v of t.versions ?? []) if (v.kind === 'proposal') v.snapshot.startDate = TRIP_START;
+  return t;
 }
 
 /** 已经打开过对比的设备：补上方案 C（不切换当前方案） */

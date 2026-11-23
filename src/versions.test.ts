@@ -39,7 +39,7 @@ describe('versions', () => {
   });
 });
 
-import { createRouteComparisonTrip, COMPARE_A, COMPARE_B } from './templateKI';
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_D } from './templateKI';
 import { currentPlanId, planOptions, switchPlan } from './versions';
 
 describe('switching plans on the itinerary page', () => {
@@ -48,7 +48,7 @@ describe('switching plans on the itinerary page', () => {
     const plans = planOptions(t0);
     const a = plans.find((v) => v.label === COMPARE_A)!;
     const b = plans.find((v) => v.label === COMPARE_B)!;
-    expect(currentPlanId(t0)).toBe(b.id);
+    expect(currentPlanId(t0)).toBe(plans.find((v) => v.label === COMPARE_D)!.id); // 新设备默认打开按需求定制的 D
 
     const tA = switchPlan(t0, a.id);
     expect(tA.days).toHaveLength(7);
