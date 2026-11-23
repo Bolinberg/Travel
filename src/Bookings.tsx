@@ -6,7 +6,11 @@ import { newId } from './id';
 import { short, shortTitle } from './ui';
 import { extractUrl, nameFromUrl, platformOf } from './search';
 import StayPicker from './StayPicker';
-import { PasteBookingBox, usePasteBooking, usePasteTicket } from './PasteBooking';
+import { classifyPaste, PasteBookingBox, usePasteBooking, usePasteDining, usePasteTicket } from './PasteBooking';
+import { looksLikeBookingText } from './bookingParse';
+import { parseExpenseText, type ParsedExpense } from './expenseParse';
+import { aiParseExpenses } from './ai';
+import { KNOWN_TICKETS } from './ticketParse';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -266,6 +270,114 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
     setQuick('');
   };
 
+  // 粘贴整段：收据 / 消费通知 / 对账单几行 → 自动拆成一笔或几笔；预订确认交给对应的识别
+  const mealPaste = usePasteDining(trip, update);
+  const [routed, setRouted] = useState<'' | 'stay' | 'ticket' | 'meal'>('');
+  const [quickBusy, setQuickBusy] = useState(false);
+  const addPasted = (text: string): boolean => {
+    if (!looksLikeBookingText(text) && !text.includes('\n')) return false;
+    if (/check[- ]?in|confirmation (?:number|code)|booking reference|reservation (?:is )?confirmed|e-?tickets?|order #|your tickets?|party of/i.test(text)) {
+      const kind = classifyPaste(text);
+      const h = kind === 'meal' ? mealPaste : kind === 'ticket' ? ticketPaste : stayPaste;
+      if (h.handle(text)) {
+        setRouted(kind);
+        setNote('');
+        setQuick('');
+        return true;
+      }
+    }
+    setRouted('');
+    const year = Number(trip.startDate.slice(0, 4)) || new Date().getFullYear();
+    const write = (list: ParsedExpense[], ids: string[]) => {
+      const dayIdOf = (date: string) => {
+        const i = date ? trip.days.findIndex((_, k) => addDays(trip.startDate, k) === date) : -1;
+        return i >= 0 ? trip.days[i].id : quickDay || null;
+      };
+      // 已经记过的（同一天同金额，比如已订好的渡轮、住宿）不重复记
+      const dup = (e: ParsedExpense) => {
+        const dayId = dayIdOf(e.date);
+        const same = (a: number) => Math.abs(a - e.amount) < 0.01;
+        if (trip.expenses.some((x) => same(x.amount || 0) && (x.dayId === dayId || !e.date))) return true;
+        return stayGroups(trip).some(
+          (g) => addDays(trip.startDate, g.days[0]) === e.date && same(g.days.reduce((n, i) => n + (trip.days[i].accommodation?.cost || 0), 0)),
+        );
+      };
+      // 对账单里的渡轮、门票、住宿：对上「要订的」里已有那一项，改成实付并标记已付，不另记一笔
+      const linked: string[] = [];
+      const linkOf = (e: ParsedExpense): { kind: 'ticket'; id: string; title: string } | { kind: 'stay'; days: number[]; title: string } | null => {
+        // 礼品店、咖啡馆这类（购物 / 餐饮）不是门票，不往门票上对
+        const k = e.category === 'transport' || e.category === 'activity' || e.category === 'other' ? KNOWN_TICKETS.find((x) => x.re.test(e.title)) : undefined;
+        const hit = k && trip.expenses.find((x) => !x.quick && k.match.test(x.title));
+        if (hit) return { kind: 'ticket', id: hit.id, title: shortTitle(hit.title) };
+        const words = e.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+        const g = stayGroups(trip).find((gr) => {
+          const n = stayLabel(trip.days[gr.days[0]]).toLowerCase();
+          return words.length > 0 && words.filter((w) => n.includes(w)).length >= Math.min(2, words.length);
+        });
+        return g ? { kind: 'stay', days: g.days, title: stayLabel(trip.days[g.days[0]]) } : null;
+      };
+      const links = list.map(linkOf);
+      const keep = list.filter((e, k) => !links[k] && !dup(e));
+      update((t) => {
+        list.forEach((e, k) => {
+          const l = links[k];
+          if (!l) return;
+          linked.push(l.title);
+          if (l.kind === 'ticket') {
+            const x = t.expenses.find((y) => y.id === l.id);
+            if (x) Object.assign(x, { amount: e.amount, booked: true, paid: true });
+          } else {
+            const per = Math.round(e.amount / l.days.length);
+            for (const i of l.days) {
+              const a = t.days[i].accommodation;
+              if (a) Object.assign(a, { cost: per, booked: true, paid: true });
+            }
+          }
+        });
+        t.expenses = t.expenses.filter((x) => !ids.includes(x.id));
+        keep.forEach((e, k) =>
+          t.expenses.push({
+            id: ids[k],
+            title: e.title,
+            amount: e.amount,
+            category: e.category === 'accommodation' ? 'other' : e.category,
+            dayId: dayIdOf(e.date),
+            paid: true,
+            quick: true,
+          }),
+        );
+      });
+      const linkedTitles = links.filter(Boolean).map((l) => l!.title);
+      const skipped = list.length - keep.length - linkedTitles.length;
+      const linkedText = linkedTitles.length ? `；${linkedTitles.map((x) => `「${x}」`).join('、')}已改成实付并标记已付` : '';
+      return `已记下 ${keep.length} 笔${keep.length ? '：' : ''}${keep
+        .map((e) => `${e.title} ${money(e.amount)}（${CATEGORY_LABELS[e.category === 'accommodation' ? 'other' : e.category]}${e.date ? ` · ${formatDate(e.date)}` : ''}）`)
+        .join('；')}${skipped ? `。另有 ${skipped} 笔之前已经记过，没有重复记` : ''}${linkedText}`;
+    };
+    const list = parseExpenseText(text, year);
+    if (!list.length) {
+      setNote('没认出金额。可以写成「停车 25」，或粘贴带金额的收据 / 消费通知。');
+      return true;
+    }
+    const ids = Array.from({ length: Math.max(list.length, 20) }, () => newId());
+    setNote(write(list, ids));
+    setQuick('');
+    // 请 Claude 核对：笔数或金额不一样时以 Claude 的为准
+    setQuickBusy(true);
+    aiParseExpenses(text, year).then((ai) => {
+      setQuickBusy(false);
+      if (!ai?.length) return;
+      const sum = (l: ParsedExpense[]) => l.reduce((n, e) => n + e.amount, 0);
+      if (ai.length === list.length && Math.abs(sum(ai) - sum(list)) < 0.01) {
+        setNote((n) => `${n}（Claude 已核对）`);
+        return;
+      }
+      setNote(`${write(ai, ids)}（Claude 核对后更正了）`);
+    });
+    return true;
+  };
+  const routedHook = routed === 'meal' ? mealPaste : routed === 'ticket' ? ticketPaste : routed === 'stay' ? stayPaste : null;
+
   const row = (x: Item) => (
     <li key={x.key} className={`bk-row ${x.booked ? 's-booked' : 's-todo'}`}>
       <div className="bk-main">
@@ -401,7 +513,7 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
             <div className="bk-main">
               <b>油费</b>
               <div className="muted small">
-                {s.totalKm.toLocaleString()} km × {trip.vehicle.litresPer100km} L/100km × ${trip.vehicle.fuelPrice}/L
+                {s.totalKm.toLocaleString()} km × {trip.vehicle.litresPer100km} L/100km × ${trip.vehicle.fuelPrice}/L；记下的加油收据合计更高时按实际算
               </div>
             </div>
             <span className="bk-amt">{money(s.byCategory.fuel)}</span>
@@ -410,7 +522,7 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
             <div className="bk-main">
               <b>餐饮</b>
               <div className="muted small">
-                每天 {money(foodStandard(trip))}；选了餐厅且更贵的那天按餐厅算{meals.length ? `（已选 ${meals.length} 家）` : ''}
+                每天 {money(foodStandard(trip))}；那天已选餐厅加上记下的餐饮开销更多时按实际算{meals.length ? `（已选 ${meals.length} 家餐厅）` : ''}
               </div>
               {meals.length > 0 && (
                 <ul className="plain bk-meals small">
@@ -431,15 +543,24 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
       <section className="bk-sec" aria-labelledby="bk-quick">
         <div className="bk-sec-head">
           <h2 id="bk-quick">记一笔</h2>
-          <span className="muted small">{others.length ? `其他开销 ${money(others.reduce((n, e) => n + (e.amount || 0), 0))}` : ''}</span>
+          <span className="muted small">{others.length ? `已记 ${others.length} 笔` : ''}</span>
         </div>
         <div className="quick">
-          <input
+          <textarea
             aria-label="记一笔"
-            placeholder="写一句就行：停车 25 / 海豚船票 180 / 粘贴订票链接"
+            rows={2}
+            placeholder="写一句「停车 25」，或粘贴收据、银行消费通知、对账单几行（自动拆成几笔、认出金额日期和类别）"
             value={quick}
+            onPaste={(e) => {
+              if (addPasted(e.clipboardData.getData('text'))) e.preventDefault();
+            }}
             onChange={(e) => setQuick(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && addQuick()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (!addPasted(quick)) addQuick();
+              }
+            }}
           />
           <select aria-label="哪一天" value={quickDay} onChange={(e) => setQuickDay(e.target.value)}>
             <option value="">不分日期</option>
@@ -447,9 +568,12 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
               <option key={d.id} value={d.id}>第 {i + 1} 天</option>
             ))}
           </select>
-          <button className="primary" disabled={!quick.trim()} onClick={addQuick}>记下</button>
+          <button className="primary" disabled={!quick.trim()} onClick={() => addPasted(quick) || addQuick()}>记下</button>
         </div>
         {note && <p className="small sp-added">{note}</p>}
+        {quickBusy && <p className="small muted">Claude 正在核对…</p>}
+        {routedHook?.message && <p className="small sp-added">这是一份预订确认，已按{routed === 'stay' ? '住宿' : routed === 'meal' ? '餐厅' : '门票 / 渡轮'}处理：{routedHook.message}</p>}
+        {routedHook?.warn && <p className="small warn-text">{routedHook.warn}</p>}
         {others.length > 0 && (
           <ul className="plain bk-list">
             {others.map((e) => {
@@ -461,6 +585,7 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
                     <div className="muted small">
                       {CATEGORY_LABELS[e.category]}
                       {i >= 0 ? ` · 第 ${i + 1} 天` : ''}
+                      {e.category === 'fuel' ? ' · 算在油费里（和估算取大）' : e.category === 'food' && i >= 0 ? ' · 算在当天餐饮里（和每日标准取大）' : ''}
                     </div>
                   </div>
                   <div className="bk-side">

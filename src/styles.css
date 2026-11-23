@@ -3411,3 +3411,14 @@ ul.plain.bk-meals > li {
   font-size: 14px;
   resize: vertical;
 }
+
+.quick textarea {
+  resize: vertical;
+  min-height: 42px;
+  font-size: 15px;
+}
+@media (max-width: 480px) {
+  .quick textarea {
+    grid-column: 1 / -1;
+  }
+}

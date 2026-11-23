@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Day, Place, Rec, Trip } from './types';
+import type { Category, Day, Place, Rec, Trip } from './types';
 import { addDays } from './calc';
 import { findPlace } from './geo';
 import { insertStop } from './route';
@@ -7,6 +7,7 @@ import { newId } from './id';
 import type { ParsedBooking } from './bookingParse';
 import type { ParsedDining } from './diningParse';
 import type { ParsedTicket } from './ticketParse';
+import type { ParsedExpense } from './expenseParse';
 
 /*
  * AI 推荐：在浏览器里直接调用 Claude（Anthropic API），
@@ -736,4 +737,27 @@ export async function aiParseTicket(text: string, year: number): Promise<Partial
     paid: o.paid === true,
     confirmed: o.confirmed === true,
   };
+}
+
+const EXPENSE_PROMPT = `下面是用户从收据、银行 / 信用卡消费通知或对账单复制来的一段文字，可能是一笔，也可能是好几笔。只根据文字内容提取，不要猜测或编造。
+一张收据只算一笔（取最终合计，不要把明细行拆开）；对账单的每一行是一笔。
+类别只能是：fuel（加油）、food（超市、餐饮、咖啡）、transport（停车、过路费、渡轮、公交）、activity（门票、景点、游船）、shopping（购物、纪念品、药店）、other。
+只回复一个 JSON 对象，不要其他文字：
+{"items":[{"title":"商户名","amount":金额数字（澳元，正数）,"date":"YYYY-MM-DD 或空","category":"上面的类别之一"}]}
+没写年份的日期按 {YEAR} 年。`;
+
+/** 让 Claude 核对「记一笔」的识别结果 */
+export async function aiParseExpenses(text: string, year: number): Promise<ParsedExpense[] | null> {
+  const o = await askJson(`${EXPENSE_PROMPT.replace('{YEAR}', String(year))}\n\n<pasted>\n${text.slice(0, 6000)}\n</pasted>`);
+  const items = o && Array.isArray(o.items) ? (o.items as Record<string, unknown>[]) : null;
+  if (!items) return null;
+  const cats: Category[] = ['fuel', 'food', 'transport', 'activity', 'shopping', 'other'];
+  return items
+    .map((it) => ({
+      title: typeof it.title === 'string' && it.title.trim() ? it.title.trim().slice(0, 50) : '一笔开销',
+      amount: typeof it.amount === 'number' && Number.isFinite(it.amount) ? Math.abs(it.amount) : 0,
+      date: typeof it.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : '',
+      category: cats.includes(it.category as Category) ? (it.category as Category) : 'other',
+    }))
+    .filter((e) => e.amount > 0);
 }

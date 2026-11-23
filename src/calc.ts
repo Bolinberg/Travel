@@ -1,4 +1,4 @@
-import type { Category, Day, Trip } from './types';
+import type { Category, Day, Expense, Trip } from './types';
 import { isDriveDay } from './route';
 
 export function addDays(iso: string, n: number): string {
@@ -56,7 +56,9 @@ export function summarize(trip: Trip): Summary {
   const driveHours = trip.days.reduce((s, d) => s + (d.driveHours || 0), 0);
   // 油费只算自驾的日子（步行、公交、飞机等不耗油）
   const driveKm = trip.days.filter(isDriveDay).reduce((s, d) => s + (d.km || 0), 0);
-  byCategory.fuel = fuelCost(driveKm, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice);
+  // 油费：按里程估算；记下的实际加油（收据）合计更高时按实际算，不重复加
+  const actualFuel = trip.expenses.filter((e) => e.category === 'fuel').reduce((n, e) => n + (e.amount || 0), 0);
+  byCategory.fuel = Math.max(fuelCost(driveKm, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice), actualFuel);
 
   let nights = 0;
   for (const d of trip.days) {
@@ -71,8 +73,10 @@ export function summarize(trip: Trip): Summary {
   for (const d of trip.days) byCategory.food += dayFood(trip, d);
 
   for (const e of trip.expenses) {
-    byCategory[e.category] += e.amount || 0;
     if (e.paid) paid += e.amount || 0;
+    // 油费、某天的餐饮已经在上面按「估算和实际取大」算过了
+    if (e.category === 'fuel' || isDatedFood(trip, e)) continue;
+    byCategory[e.category] += e.amount || 0;
   }
 
   const total = Object.values(byCategory).reduce((s, v) => s + v, 0);
@@ -105,8 +109,15 @@ export function pickedDiningCost(d: Day): number {
 }
 
 /** 当天餐饮花费 = max(每日标准, 已选餐厅合计) */
+/** 记在某一天的餐饮开销（超市、咖啡、餐厅收据等） */
+const isDatedFood = (trip: Trip, e: Expense) => e.category === 'food' && !!e.dayId && trip.days.some((d) => d.id === e.dayId);
+export function foodSpentOn(trip: Trip, d: Day): number {
+  return trip.expenses.filter((e) => e.category === 'food' && e.dayId === d.id).reduce((n, e) => n + (e.amount || 0), 0);
+}
+
+/** 当天餐饮 = max(每日标准, 已选餐厅 + 当天记下的餐饮开销) */
 export function dayFood(trip: Trip, d: Day): number {
-  return Math.max(foodStandard(trip), pickedDiningCost(d));
+  return Math.max(foodStandard(trip), pickedDiningCost(d) + foodSpentOn(trip, d));
 }
 
 /** 按天的花费：住宿、餐饮、油费、当天的门票交通等 */
@@ -114,8 +125,10 @@ export function dayCosts(trip: Trip) {
   return trip.days.map((d) => {
     const stay = d.accommodation?.cost || 0;
     const food = dayFood(trip, d);
-    const fuel = isDriveDay(d) ? fuelCost(d.km || 0, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
-    const extras = trip.expenses.filter((e) => e.dayId === d.id).reduce((n, e) => n + (e.amount || 0), 0);
+    const est = isDriveDay(d) ? fuelCost(d.km || 0, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
+    const actual = trip.expenses.filter((e) => e.dayId === d.id && e.category === 'fuel').reduce((n, e) => n + (e.amount || 0), 0);
+    const fuel = Math.max(est, actual);
+    const extras = trip.expenses.filter((e) => e.dayId === d.id && e.category !== 'fuel' && e.category !== 'food').reduce((n, e) => n + (e.amount || 0), 0);
     return { stay, food, fuel, extras, total: stay + food + fuel + extras };
   });
 }

@@ -128,3 +128,25 @@ describe('餐饮不重复算', () => {
     expect(dayFood(t, d)).toBe(foodStandard(t));
   });
 });
+
+describe('记下的实际开销不和估算重复算', () => {
+  it('加油收据：油费取估算和实际中较大的', () => {
+    const t = createDefaultTrip();
+    const est = summarize(t).byCategory.fuel;
+    t.expenses.push({ id: 'f1', title: 'BP', category: 'fuel', amount: 50, dayId: t.days[0].id, paid: true });
+    expect(summarize(t).byCategory.fuel).toBe(est); // 实际还没超过估算
+    t.expenses.push({ id: 'f2', title: 'Shell', category: 'fuel', amount: est + 100, dayId: t.days[1].id, paid: true });
+    expect(summarize(t).byCategory.fuel).toBe(est + 150);
+  });
+  it('某天的餐饮收据算进当天餐饮，不另外加', () => {
+    const t = createDefaultTrip();
+    const before = summarize(t).byCategory.food;
+    t.expenses = t.expenses.filter((e) => e.category !== 'food');
+    const base = summarize(t).byCategory.food;
+    t.expenses.push({ id: 'c1', title: 'Coles', category: 'food', amount: 60, dayId: t.days[0].id, paid: true });
+    expect(summarize(t).byCategory.food).toBe(base); // 还在每日标准内
+    t.expenses.push({ id: 'c2', title: 'Restaurant', category: 'food', amount: 300, dayId: t.days[0].id, paid: true });
+    expect(summarize(t).byCategory.food).toBe(base - foodStandard(t) + 360);
+    expect(before).toBeGreaterThanOrEqual(base);
+  });
+});
