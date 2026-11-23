@@ -22,6 +22,19 @@ describe('平台搜索链接', () => {
     expect(wotif.searchParams.get('children')).toBe('1_8');
     expect(wotif.searchParams.get('sort')).toBe('REVIEW');
   });
+  it('更多平台：Expedia 系、Agoda、Trip.com、Kayak 都带上日期和人数', () => {
+    const links = staySearchLinks({ place: 'Robe SA', checkin: '2026-12-12', checkout: '2026-12-14', adults: 2, childAges: [10, 8] });
+    const get = (k: string) => new URL(links.find((l) => l.key === k)!.href);
+    expect(get('expedia').hostname).toBe('www.expedia.com.au');
+    expect(get('expedia').searchParams.get('children')).toBe('1_10,1_8');
+    expect(get('hotelscom').searchParams.get('startDate')).toBe('2026-12-12');
+    expect(get('stayz').searchParams.get('endDate')).toBe('2026-12-14');
+    expect(get('agoda').searchParams.get('los')).toBe('2');
+    expect(get('agoda').searchParams.get('childages')).toBe('10,8');
+    expect(get('tripcom').searchParams.get('checkin')).toBe('2026/12/12');
+    expect(get('kayak').pathname).toBe('/hotels/Robe,South-Australia,Australia/2026-12-12/2026-12-14/2adults/2children-10-8');
+    expect(links.map((l) => l.key)).toEqual(expect.arrayContaining(['booking', 'airbnb', 'wotif', 'expedia', 'hotelscom', 'stayz', 'agoda', 'tripcom', 'kayak', 'parks']));
+  });
   it('餐厅搜索和订位人数', () => {
     const links = diningSearchLinks('Adelaide SA', '2026-12-14', 4);
     expect(links.map((l) => l.label)).toContain('Tripadvisor');

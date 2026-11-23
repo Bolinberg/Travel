@@ -3,7 +3,7 @@ import type { Rec, Trip } from './types';
 import { addDays, foodStandard, formatDate, money } from './calc';
 import { newId } from './id';
 import { childAges, short } from './ui';
-import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks } from './search';
+import { diningSearchLinks, extractUrl, loadPlatformPrefs, MORE_PLATFORMS, nameFromUrl, platformOf, savePlatformPrefs, staySearchLinks } from './search';
 import { pickStay, stayGroups, stayLabel } from './Bookings';
 import { usePasteBooking, usePasteDining } from './PasteBooking';
 
@@ -156,6 +156,8 @@ export default function StayPicker({
     });
 
   const links = staySearchLinks({ place: first.to, checkin, checkout, adults: trip.adults, childAges: childAges(trip) });
+  const [favs, setFavs] = useState<string[]>(loadPlatformPrefs);
+  const [moreOpen, setMoreOpen] = useState(false);
   const others = first.stayOptions.filter((r) => !r.picked);
   const shown = showAll ? others : others.slice(0, 3);
 
@@ -255,12 +257,45 @@ export default function StayPicker({
       <div className="sp-step">
         <div className="find-head">① 去平台找（已按评分筛好，带上日期和人数）</div>
         <div className="sp-links">
-          {links.map((l) => (
-            <a key={l.key} className="sp-chip" href={l.href} target="_blank" rel="noreferrer" title={l.hint}>
-              {l.label} ↗
-            </a>
-          ))}
+          {links
+            .filter((l) => favs.includes(l.key))
+            .map((l) => (
+              <a key={l.key} className="sp-chip" href={l.href} target="_blank" rel="noreferrer" title={l.hint}>
+                {l.label} ↗
+              </a>
+            ))}
+          <button className="sp-chip more" onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen}>
+            {moreOpen ? '收起' : `更多平台（${links.length - favs.filter((k) => links.some((l) => l.key === k)).length}）`}
+          </button>
         </div>
+        {moreOpen && (
+          <ul className="plain sp-more">
+            {links.map((l) => {
+              const info = MORE_PLATFORMS.find((p) => p.key === l.key);
+              const on = favs.includes(l.key);
+              return (
+                <li key={l.key}>
+                  <div className="sp-cand">
+                    <a className="link strong" href={l.href} target="_blank" rel="noreferrer">{l.label} ↗</a>
+                    <span className="muted small">{info?.about ?? l.hint}</span>
+                  </div>
+                  <button
+                    className={on ? 'mini on' : 'mini'}
+                    aria-pressed={on}
+                    title={on ? '从常用里去掉' : '放到常用（每一晚都直接显示）'}
+                    onClick={() => {
+                      const next = on ? favs.filter((k) => k !== l.key) : [...favs, l.key];
+                      setFavs(next);
+                      savePlatformPrefs(next);
+                    }}
+                  >
+                    {on ? '★ 常用' : '☆ 设为常用'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {/* ② 粘贴 */}

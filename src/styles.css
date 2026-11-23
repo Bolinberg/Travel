@@ -3422,3 +3422,19 @@ ul.plain.bk-meals > li {
     grid-column: 1 / -1;
   }
 }
+
+.sp-chip.more {
+  border-style: dashed;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 32px;
+}
+ul.plain.sp-more > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}

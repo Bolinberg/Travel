@@ -106,7 +106,96 @@ export function staySearchLinks(q: StayQuery): SearchLink[] {
       hint: '附近评分高的家庭住宿',
       href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(`family accommodation ${where}`),
     },
+    ...moreStayLinks(q, where, kids),
   ];
+}
+
+/** 一个平台的说明（「更多平台」里显示，帮你判断靠不靠谱、适合订什么） */
+export interface PlatformInfo {
+  key: string;
+  label: string;
+  /** 归属 / 特点 */
+  about: string;
+}
+
+/**
+ * 「更多平台」：都是在澳洲正规经营、退改有保障的大平台或连锁。
+ * Expedia 系（Expedia、Wotif、Hotels.com、Stayz）账号和评价互通；Booking 系（Booking.com、Agoda）；
+ * Kayak 一次比各家价格；连锁度假营地直接在官网订通常最划算。
+ */
+export const MORE_PLATFORMS: PlatformInfo[] = [
+  { key: 'expedia', label: 'Expedia', about: 'Expedia 集团（和 Wotif、Hotels.com 同一家），常有「机票 / 租车 + 酒店」套餐价' },
+  { key: 'hotelscom', label: 'Hotels.com', about: 'Expedia 集团，住 10 晚左右攒一晚奖励（One Key 会员通用）' },
+  { key: 'stayz', label: 'Stayz', about: 'Expedia 集团的澳洲本土度假屋平台（Vrbo 在澳洲的名字），整栋房子带厨房' },
+  { key: 'agoda', label: 'Agoda', about: 'Booking 集团，亚洲背景，有中文客服，偶尔比 Booking.com 便宜' },
+  { key: 'tripcom', label: 'Trip.com（携程）', about: '携程国际站，中文界面和客服，可用中国的银行卡' },
+  { key: 'kayak', label: 'Kayak 比价', about: '一次比 Booking、Expedia、Agoda 等各家价格（Booking 集团旗下），比完再去最便宜的那家订' },
+  { key: 'parks', label: '连锁度假营地', about: 'BIG4、Discovery Parks、NRMA、Tasman 等，两卧小木屋、泳池游乐场，官网直订常有会员价' },
+];
+
+function moreStayLinks(q: StayQuery, where: string, kids: number): SearchLink[] {
+  const town = where.split(',')[0].trim();
+  const nights = Math.max(1, Math.round((Date.parse(q.checkout) - Date.parse(q.checkin)) / 86_400_000));
+  const expediaKids: Record<string, string> = kids ? { children: q.childAges.map((a) => `1_${a}`).join(',') } : {};
+  const expediaQuery = qs({ destination: where, startDate: q.checkin, endDate: q.checkout, adults: String(q.adults), ...expediaKids, sort: 'REVIEW' });
+  const kayakPlace = where.replace(/,\s*/g, ',').replace(/\s+/g, '-');
+  return [
+    { key: 'expedia', label: 'Expedia', hint: '按住客评分排序', href: `https://www.expedia.com.au/Hotel-Search?${expediaQuery}` },
+    { key: 'hotelscom', label: 'Hotels.com', hint: '按住客评分排序', href: `https://au.hotels.com/Hotel-Search?${expediaQuery}` },
+    {
+      key: 'stayz',
+      label: 'Stayz',
+      hint: '整栋度假屋',
+      href: 'https://www.stayz.com.au/search?' + qs({ destination: where, startDate: q.checkin, endDate: q.checkout, adults: String(q.adults), ...expediaKids }),
+    },
+    {
+      key: 'agoda',
+      label: 'Agoda',
+      hint: '中文客服',
+      href:
+        'https://www.agoda.com/search?' +
+        qs({ textToSearch: town, checkIn: q.checkin, los: String(nights), rooms: '1', adults: String(q.adults), children: String(kids), childages: q.childAges.join(','), sort: 'reviewAll' }),
+    },
+    {
+      key: 'tripcom',
+      label: 'Trip.com',
+      hint: '中文界面',
+      href:
+        'https://au.trip.com/hotels/list?' +
+        qs({ keyword: town, checkin: q.checkin.replace(/-/g, '/'), checkout: q.checkout.replace(/-/g, '/'), adult: String(q.adults), children: String(kids), ages: q.childAges.join(','), crn: '1' }),
+    },
+    {
+      key: 'kayak',
+      label: 'Kayak 比价',
+      hint: '一次比各家价格',
+      href: `https://www.kayak.com.au/hotels/${kayakPlace.split(",").map(encodeURIComponent).join(",")}/${q.checkin}/${q.checkout}/${q.adults}adults${kids ? `/${kids}children-${q.childAges.join('-')}` : ''}?sort=userrating_b`,
+    },
+    {
+      key: 'parks',
+      label: '连锁度假营地',
+      hint: 'BIG4 / Discovery / NRMA',
+      href: 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(`BIG4 Discovery Parks NRMA holiday park ${where}`),
+    },
+  ];
+}
+
+/** 默认显示的平台（其余在「更多平台」里，可以设为常用） */
+export const DEFAULT_STAY_PLATFORMS = ['booking', 'airbnb', 'wotif', 'tripadvisor', 'google'];
+const PREF_KEY = 'travel-planner.platforms';
+export function loadPlatformPrefs(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREF_KEY) ?? 'null');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : DEFAULT_STAY_PLATFORMS;
+  } catch {
+    return DEFAULT_STAY_PLATFORMS;
+  }
+}
+export function savePlatformPrefs(keys: string[]) {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify(keys));
+  } catch {
+    /* 存不了就只在这次有效 */
+  }
 }
 
 export function diningSearchLinks(place: string, date: string, covers: number): SearchLink[] {
@@ -156,6 +245,11 @@ export function platformOf(url: string): string {
   if (/hotels\.com$/.test(host)) return 'Hotels.com';
   if (/agoda\./.test(host)) return 'Agoda';
   if (/trip\.com$/.test(host)) return 'Trip.com';
+  if (/kayak\./.test(host)) return 'Kayak';
+  if (/trivago\./.test(host)) return 'trivago';
+  if (/big4\.com\.au$/.test(host)) return 'BIG4';
+  if (/discoveryholidayparks\.com\.au$/.test(host)) return 'Discovery Parks';
+  if (/nrmaparksandresorts\.com\.au$/.test(host)) return 'NRMA Parks';
   if (/tripadvisor\./.test(host)) return 'Tripadvisor';
   if (/opentable\./.test(host)) return 'OpenTable';
   if (/google\.|goo\.gl$|maps\.app\.goo\.gl$/.test(host)) return 'Google 地图';
