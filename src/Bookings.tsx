@@ -6,6 +6,7 @@ import { newId } from './id';
 import { short, shortTitle } from './ui';
 import { extractUrl, nameFromUrl, platformOf } from './search';
 import StayPicker from './StayPicker';
+import { PasteBookingBox } from './PasteBooking';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -337,6 +338,7 @@ export default function Bookings({ trip, update }: { trip: Trip; update: Update 
             还有 {todo.length} 项 · 已订 {done.length}/{items.length}
           </span>
         </div>
+        <PasteBookingBox trip={trip} update={update} />
         {todo.length ? <ul className="plain bk-list">{todo.map(row)}</ul> : <p className="small good">都订好了。</p>}
       </section>
 

@@ -5,6 +5,7 @@ import { newId } from './id';
 import { childAges, short } from './ui';
 import { diningSearchLinks, extractUrl, nameFromUrl, platformOf, staySearchLinks } from './search';
 import { pickStay, stayGroups, stayLabel } from './Bookings';
+import { usePasteBooking } from './PasteBooking';
 
 type Update = (mutate: (draft: Trip) => void) => void;
 
@@ -87,10 +88,19 @@ export default function StayPicker({
 
   if (!acc) return <p className="muted small">这天不住宿。</p>;
 
+  const pasted = usePasteBooking(trip, update);
   const takeText = (text: string) => {
-    setPaste(text);
+    // 整段预订确认 / 房源文字：认出名称、日期、价格、确认号
+    if (pasted.handle(text, group[0])) {
+      setAdded('');
+      setPaste('');
+      return;
+    }
     const { url, title } = extractUrl(text);
-    if (!url) return;
+    if (!url) {
+      setPaste(text);
+      return;
+    }
     let name = '';
     const est = estimateNightly(trip, group[0]);
     update((t) => void (name = addPastedStay(t, group, url, title, est)));
@@ -255,18 +265,30 @@ export default function StayPicker({
 
       {/* ② 粘贴 */}
       <div className="sp-step">
-        <div className="find-head">② 看中了？把链接粘贴到这里，就加入并选定</div>
+        <div className="find-head">② 看中了或订好了？把链接或整段确认信息粘贴到这里</div>
         <div className="sp-paste">
-          <input
-            aria-label="粘贴住宿链接"
-            inputMode="url"
-            placeholder="粘贴 Booking / Airbnb / Wotif / 官网 链接"
+          <textarea
+            aria-label="粘贴住宿链接或预订确认"
+            rows={2}
+            placeholder="粘贴房源链接，或确认邮件 / 订单页面的整段文字（自动认出名称、日期、总价和确认号）"
             value={paste}
-            onChange={(e) => takeText(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              takeText(e.clipboardData.getData('text'));
+            }}
+            onChange={(e) => setPaste(e.target.value)}
           />
-          <button onClick={pasteFromClipboard}>粘贴</button>
+          <div className="sp-paste-btns">
+            <button onClick={pasteFromClipboard}>粘贴</button>
+            {paste.trim() && (
+              <button className="primary" onClick={() => takeText(paste)}>加入</button>
+            )}
+          </div>
         </div>
-        {added && <p className="small sp-added">已加入并选定「{added}」。价格先按估算，订好后点「已订好」填实付总价。</p>}
+        {added && <p className="small sp-added">已加入并选定「{added}」。价格先按估算，订好后点「已订好」填实付总价，或把确认邮件整段粘贴进来。</p>}
+        {pasted.busy && <p className="small muted">Claude 正在核对…</p>}
+        {pasted.message && <p className="small sp-added">{pasted.message}</p>}
+        {pasted.warn && <p className="small warn-text">{pasted.warn}</p>}
       </div>
 
       {/* 候选 */}
@@ -328,9 +350,11 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
     });
 
   const takeText = (text: string) => {
-    setPaste(text);
     const { url, title } = extractUrl(text);
-    if (!url) return;
+    if (!url) {
+      setPaste(text);
+      return;
+    }
     const name = nameFromUrl(url) || title.slice(0, 60) || `${platformOf(url)} 上的餐厅`;
     set((list) => {
       const hit = list.find((r) => r.url === url || r.bookingUrl === url);
@@ -469,7 +493,12 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
             inputMode="url"
             placeholder="粘贴 Tripadvisor / Google 地图 / OpenTable 链接"
             value={paste}
-            onChange={(e) => takeText(e.target.value)}
+            onPaste={(e) => {
+              e.preventDefault();
+              takeText(e.clipboardData.getData('text'));
+            }}
+            onChange={(e) => setPaste(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && takeText(paste)}
           />
           <button onClick={pasteFromClipboard}>粘贴</button>
         </div>

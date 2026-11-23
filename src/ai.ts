@@ -4,6 +4,7 @@ import { addDays } from './calc';
 import { findPlace } from './geo';
 import { insertStop } from './route';
 import { newId } from './id';
+import type { ParsedBooking } from './bookingParse';
 
 /*
  * AI 推荐：在浏览器里直接调用 Claude（Anthropic API），
@@ -618,4 +619,50 @@ export function applyResult(trip: Trip, dayId: string, r: AiResult): { sights: n
     stays: day.accommodation ? add(day.stayOptions, r.stays) : 0,
     dining: add(day.dining, r.dining),
   };
+}
+
+/* ---------------- 识别粘贴的预订确认 ---------------- */
+
+const BOOKING_PROMPT = `下面是用户从邮件或网页复制来的一段住宿预订确认（也可能只是房源页面）。只根据文字内容提取信息，不要猜测或编造；文字里没有的字段用空字符串或 0。
+只回复一个 JSON 对象，不要其他文字：
+{"name":"住宿名称（酒店/房源的名字，不是客人姓名）","checkin":"YYYY-MM-DD","checkout":"YYYY-MM-DD","nights":整数,"total":总价数字（含清洁费等的最终合计，澳元）,"confirmation":"确认号/订单号","confirmed":是否是已确认的预订(true/false),"paid":是否已付款(true/false),"address":"地址"}
+没写年份的日期按 {YEAR} 年。`;
+
+/** 让 Claude 核对规则识别的结果；没有可用的 Claude 或出错时返回 null（静默，不打扰用户） */
+export async function aiParseBooking(text: string, year: number): Promise<Partial<ParsedBooking> | null> {
+  const prompt = `${BOOKING_PROMPT.replace('{YEAR}', String(year))}\n\n<pasted>\n${text.slice(0, 6000)}\n</pasted>`;
+  const clean = (o: Record<string, unknown> | null): Partial<ParsedBooking> | null => {
+    if (!o || typeof o !== 'object') return null;
+    const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '');
+    const num = (k: string) => (typeof o[k] === 'number' && Number.isFinite(o[k]) ? (o[k] as number) : 0);
+    const date = (k: string) => (/^\d{4}-\d{2}-\d{2}$/.test(str(k)) ? str(k) : '');
+    return {
+      name: str('name'),
+      checkin: date('checkin'),
+      checkout: date('checkout'),
+      nights: Math.round(num('nights')),
+      total: num('total'),
+      confirmation: str('confirmation'),
+      confirmed: o.confirmed === true,
+      paid: o.paid === true,
+      address: str('address'),
+    };
+  };
+  try {
+    const sample = await claudeSample();
+    if (sample) return clean(await sample.json<Record<string, unknown>>(prompt, { cache: false, modelTier: 'quick' }));
+    const settings = loadAiSettings();
+    if (!settings.apiKey.trim()) return null;
+    const client = new Anthropic({ apiKey: settings.apiKey.trim(), dangerouslyAllowBrowser: true });
+    const res = await client.messages.create({
+      model: (AI_MODELS.find((m) => m.id === settings.model) ?? AI_MODELS[0]).id,
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const out = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    const json = out.match(/\{[\s\S]*\}/)?.[0];
+    return json ? clean(JSON.parse(json)) : null;
+  } catch {
+    return null;
+  }
 }

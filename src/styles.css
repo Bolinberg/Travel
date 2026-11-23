@@ -3364,3 +3364,35 @@ ul.plain.bk-meals > li {
   justify-content: flex-start;
   gap: 10px;
 }
+
+/* 粘贴预订确认 */
+.sp-paste textarea {
+  flex: 1;
+  min-width: 0;
+  border: 1.5px dashed var(--sign);
+  resize: vertical;
+  min-height: 48px;
+  font-size: 15px;
+}
+.sp-paste-btns {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.paste-box {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--good-soft);
+}
+.paste-box textarea {
+  border: 1.5px dashed var(--sign);
+  background: var(--surface);
+  resize: vertical;
+  font-size: 15px;
+}
+.paste-box p {
+  margin: 0;
+}
