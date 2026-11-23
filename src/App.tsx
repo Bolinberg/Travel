@@ -263,7 +263,7 @@ export default function App() {
         <section className="offer" aria-label="新方案">
           <div>
             <b>A/B 路线对比已更新</b>
-            <p>从 Point Cook 出发。A：第 1 天直达蓝湖，袋鼠岛住 1 晚后回阿德莱德，经 Dimboola、格兰扁回家（7 天）；B：住 Port Campbell、Robe，袋鼠岛 2 晚，回程走格兰扁（9 天）。</p>
+            <p>从 Point Cook 出发。A：第 1 天直达蓝湖，袋鼠岛住 1 晚后回阿德莱德，经 Dimboola、格兰扁回家（7 天）；B：住 Port Campbell、Robe，袋鼠岛 2 晚，回程走格兰扁（9 天）；C：去程住 Apollo Bay 和蓝湖，之后同 B（9 天）。</p>
           </div>
           <div className="row wrap">
             <button

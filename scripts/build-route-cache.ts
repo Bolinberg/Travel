@@ -28,10 +28,20 @@ for (const trip of trips) {
       const coords = g.points.map((p) => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
       const key = `route3:${profile}:${coords}`;
       if (out[key]) continue;
-      const body = execFileSync('curl', ['-s', '-m', '30', `${BASE[profile]}${coords}?overview=simplified&geometries=geojson`], { encoding: 'utf8' });
-      const j = JSON.parse(body);
+      // 网络偶尔断：重试 3 次，还不行就跳过这一段（App 里会现查或按直线估算）
+      let j: { code?: string; routes?: { geometry: { coordinates: [number, number][] }; distance: number; duration: number }[] } = {};
+      for (let attempt = 0; attempt < 3 && j.code !== 'Ok'; attempt++) {
+        try {
+          j = JSON.parse(execFileSync('curl', ['-s', '-m', '30', `${BASE[profile]}${coords}?overview=simplified&geometries=geojson`], { encoding: 'utf8' }));
+        } catch {
+          execFileSync('sleep', ['2']);
+        }
+      }
       const r = j.routes?.[0];
-      if (j.code !== 'Ok' || !r) throw new Error(`route failed: ${key}`);
+      if (j.code !== 'Ok' || !r) {
+        console.warn(`\n跳过（取不到路线）: ${key}`);
+        continue;
+      }
       out[key] = {
         path: r.geometry.coordinates.map(([lng, lat]: [number, number]) => [Math.round(lat * 1e5) / 1e5, Math.round(lng * 1e5) / 1e5]),
         km: Math.round(r.distance / 1000),

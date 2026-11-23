@@ -8,6 +8,42 @@ export const STAYS_CHECKED = '2026-11-22';
 
 /** 过夜地（Day.to）→ 已核实的住宿 */
 export const VERIFIED_STAYS: Record<string, VerifiedStay[]> = {
+
+  "Apollo Bay VIC": [
+    {
+      "name": "Apollo Bay Holiday Park",
+      "town": "Apollo Bay",
+      "type": "度假村带厨房小木屋（可住 4–6 人）",
+      "officialUrl": "",
+      "bookingUrl": "https://www.booking.com/hotel/au/apollo-bay-holiday-park.html",
+      "rating": "Expedia 8.4/10（约 316 条）",
+      "priceNote": "估算约 $180–320/晚",
+      "cost": 240,
+      "note": "温水泳池、儿童游乐场和游戏室，离海滩约 100 米"
+    },
+    {
+      "name": "Beachcomber Motel & Apartments",
+      "town": "Apollo Bay",
+      "type": "家庭公寓（一大床 + 两单人床，两间卧室）",
+      "officialUrl": "",
+      "bookingUrl": "https://www.wotif.com/Apollo-Bay-Hotels-Beachcomber-Motel-And-Apartments-Apollo-Bay.h9624904.Hotel-Information",
+      "rating": "Expedia 9.0/10；Kayak 8.2/10（约 1,800 条）",
+      "priceNote": "估算约 $250–400/晚",
+      "cost": 300,
+      "note": "公寓带厨房，评论说房间宽敞干净；订前确认是两卧的家庭公寓"
+    },
+    {
+      "name": "The Apollo Apartments",
+      "town": "Apollo Bay（169 Great Ocean Rd）",
+      "type": "一卧 / 两卧公寓（两卧可住 6 人）",
+      "officialUrl": "https://visitgreatoceanroad.org.au/accommodation/the-apollo-apartments/",
+      "bookingUrl": "https://www.booking.com/hotel/au/the-apollo.html",
+      "rating": "Booking.com 8.9（情侣评分）；两卧住客 9.5–10",
+      "priceNote": "估算约 $230–380/晚",
+      "cost": 300,
+      "note": "步行一分钟到海滨，自带厨房；有楼梯没有电梯"
+    }
+  ],
   "Port Campbell VIC": [
     {
       "name": "NRMA Port Campbell Holiday Park",

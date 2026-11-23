@@ -509,6 +509,7 @@ export function createNineDayTrip(): Trip {
 export const COMPARE_NAME = 'Point Cook 出发 · A/B 路线对比';
 export const COMPARE_A = 'A：直达蓝湖、袋鼠岛 1 晚（7 天）';
 export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
+export const COMPARE_C = 'C：住 Apollo Bay、蓝湖（9 天）';
 
 const POINT_COOK: Place = {
   name: 'Point Cook VIC', label: 'Point Cook（家）', lat: -37.9148, lng: 144.7509, wiki: 'Point Cook, Victoria',
@@ -579,12 +580,40 @@ export function createRouteComparisonTrip(): Trip {
     expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? idMap.get(e.dayId) ?? null : null })),
   };
 
+  // C：去程住 Apollo Bay 和甘比尔山（蓝湖），第 3 天经汉多夫到阿德莱德；之后和 B 一样
+  const c1 = day(
+    '大洋路前半段 → Apollo Bay', 'Point Cook VIC', 'Apollo Bay VIC', 174, 2.8,
+    ['Torquay VIC', 'Bells Beach VIC', 'Split Point Lighthouse, Aireys Inlet VIC', 'Lorne VIC'],
+    stay('Apollo Bay 住宿', 260),
+    '第一天轻松：Torquay → Bells Beach → Split Point 灯塔 → Lorne（午餐、海滩）→ Apollo Bay。纯开车约 2.8 小时，下午就能到，孩子可以在海滩玩，傍晚去 Marriners Lookout 看海湾；野生动物出来前就到住处。Lorne 之后沿海弯道多，注意晕车。',
+    pick('Apollo Bay', 'stay'), [...pick('Lorne', 'dining', '午餐'), ...pick('Apollo Bay', 'dining', '晚餐')],
+  );
+  const c2 = day(
+    '十二门徒岩 · Port Fairy → 甘比尔山蓝湖', 'Apollo Bay VIC', 'Mount Gambier SA', 353, 5.1,
+    ['Twelve Apostles VIC', 'Loch Ard Gorge VIC', 'London Bridge, Port Campbell VIC', 'Warrnambool VIC', 'Port Fairy VIC', 'Blue Lake, Mount Gambier SA'],
+    stay('Mount Gambier 住宿（蓝湖边）', 200),
+    '纯开车约 5.1 小时，是去程最长的一天。早上穿过 Otway 雨林段（弯多，慢慢开），上午看十二门徒岩、Loch Ard Gorge 和伦敦拱门，Warrnambool 或 Port Fairy 午餐，傍晚到甘比尔山，天黑前去看蓝湖。进入南澳前处理掉新鲜水果蔬菜（果蝇检疫）；南澳慢 30 分钟。',
+    pick('Mount Gambier', 'stay'), [...pick('Port Fairy', 'dining', '午餐'), ...pick('Mount Gambier', 'dining', '晚餐')],
+  );
+  const c3 = clone(a2);
+  c3.accommodation = stay('Adelaide 住宿（第 1 晚）', 380);
+  const cRest = b.days.slice(3).map(clone);
+  const cIdMap = new Map(b.days.slice(3).map((d, i) => [d.id, cRest[i].id]));
+  const c: Trip = {
+    ...structuredClone(b),
+    id: b.id,
+    days: [c1, c2, c3, ...cRest],
+    expenses: b.expenses.map((e) => ({ ...e, id: newId(), dayId: e.dayId ? cIdMap.get(e.dayId) ?? null : null })),
+  };
+
   const snapA = snapshot(a);
   const snapB = snapshot(b);
+  const snapC = snapshot(c);
   b.versions = [];
   // 列表里新的在上：先加 B 再加 A，对比表里 A 在左、B 在右
   const vb = addVersion(b, COMPARE_B, 'proposal', snapB);
   addVersion(b, COMPARE_A, 'proposal', snapA);
+  addVersion(b, COMPARE_C, 'proposal', snapC);
   b.activePlan = vb.id;
   b.name = COMPARE_NAME;
   return applyVerifiedStays(b);
@@ -595,6 +624,19 @@ export function createRouteComparisonTrip(): Trip {
  * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
  */
 export function upgradeComparison(trip: Trip): Trip {
+  return addPlanC(upgradeA(trip));
+}
+
+/** 已经打开过对比的设备：补上方案 C（不切换当前方案） */
+function addPlanC(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME || trip.versions?.some((v) => v.label === COMPARE_C)) return trip;
+  const freshC = createRouteComparisonTrip().versions!.find((v) => v.label === COMPARE_C)!;
+  const t: Trip = structuredClone(trip);
+  addVersion(t, COMPARE_C, 'proposal', { ...freshC.snapshot, startDate: trip.startDate });
+  return t;
+}
+
+function upgradeA(trip: Trip): Trip {
   if (trip.name !== COMPARE_NAME || trip.versions?.some((v) => v.label === COMPARE_A)) return trip;
   const fresh = createRouteComparisonTrip();
   const freshA = fresh.versions!.find((v) => v.label === COMPARE_A)!;

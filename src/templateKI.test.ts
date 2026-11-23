@@ -108,14 +108,14 @@ describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () =
   });
 });
 
-import { createRouteComparisonTrip, COMPARE_A, COMPARE_B } from './templateKI';
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_C } from './templateKI';
 import { versionTrip } from './versions';
 
 describe('route comparison A vs B from Point Cook', () => {
   const t = createRouteComparisonTrip();
   const [va, vb] = t.versions!.slice().reverse();
   it('holds both routes as proposals', () => {
-    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A]);
+    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A, COMPARE_C]);
     const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
     const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
     expect(a.days).toHaveLength(7);
@@ -157,6 +157,28 @@ describe('upgrading an existing A/B comparison on a device', () => {
     expect(up.days[5].to).toBe('Dimboola VIC');
     expect(up.versions!.find((v) => v.id === currentPlanId(up))!.label).toBe(COMPARE_A);
     // 已经是新版就不动
+    expect(upgradeComparison(up)).toBe(up);
+  });
+});
+
+describe('方案 C：去程住 Apollo Bay 和蓝湖', () => {
+  const t = createRouteComparisonTrip();
+  const c = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_C)!);
+  it('第 1 晚 Apollo Bay，第 2 晚甘比尔山，第 3 天到阿德莱德，之后和 B 一样', () => {
+    expect(c.days).toHaveLength(9);
+    expect(c.days[0].to).toBe('Apollo Bay VIC');
+    expect(c.days[1].to).toBe('Mount Gambier SA');
+    expect(c.days[2].to).toBe('Adelaide SA');
+    const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
+    expect(c.days.slice(3).map((d) => d.to)).toEqual(b.days.slice(3).map((d) => d.to));
+    expect(c.days[0].stayOptions.some((r) => r.bookingUrl)).toBe(true);
+  });
+  it('已有对比的设备会补上 C，且不切换当前方案', () => {
+    const old = structuredClone(t);
+    old.versions = old.versions!.filter((v) => v.label !== COMPARE_C);
+    const up = upgradeComparison(old);
+    expect(up.versions!.some((v) => v.label === COMPARE_C)).toBe(true);
+    expect(up.activePlan).toBe(old.activePlan);
     expect(upgradeComparison(up)).toBe(up);
   });
 });
