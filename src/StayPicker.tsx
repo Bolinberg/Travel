@@ -3,7 +3,7 @@ import type { Rec, Trip } from './types';
 import { addDays, foodStandard, formatDate, money } from './calc';
 import { newId } from './id';
 import { childAges, short } from './ui';
-import { diningSearchLinks, extractUrl, loadPlatformPrefs, MORE_PLATFORMS, nameFromUrl, platformOf, savePlatformPrefs, staySearchLinks } from './search';
+import { diningSearchLinks, extractUrl, loadPlatformPrefs, MORE_DINING_PLATFORMS, MORE_PLATFORMS, nameFromUrl, platformOf, savePlatformPrefs, staySearchLinks, type PlatformInfo, type SearchLink } from './search';
 import { pickStay, stayGroups, stayLabel } from './Bookings';
 import { usePasteBooking, usePasteDining } from './PasteBooking';
 
@@ -156,8 +156,6 @@ export default function StayPicker({
     });
 
   const links = staySearchLinks({ place: first.to, checkin, checkout, adults: trip.adults, childAges: childAges(trip) });
-  const [favs, setFavs] = useState<string[]>(loadPlatformPrefs);
-  const [moreOpen, setMoreOpen] = useState(false);
   const others = first.stayOptions.filter((r) => !r.picked);
   const shown = showAll ? others : others.slice(0, 3);
 
@@ -256,46 +254,7 @@ export default function StayPicker({
       {/* ① 去找 */}
       <div className="sp-step">
         <div className="find-head">① 去平台找（已按评分筛好，带上日期和人数）</div>
-        <div className="sp-links">
-          {links
-            .filter((l) => favs.includes(l.key))
-            .map((l) => (
-              <a key={l.key} className="sp-chip" href={l.href} target="_blank" rel="noreferrer" title={l.hint}>
-                {l.label} ↗
-              </a>
-            ))}
-          <button className="sp-chip more" onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen}>
-            {moreOpen ? '收起' : `更多平台（${links.length - favs.filter((k) => links.some((l) => l.key === k)).length}）`}
-          </button>
-        </div>
-        {moreOpen && (
-          <ul className="plain sp-more">
-            {links.map((l) => {
-              const info = MORE_PLATFORMS.find((p) => p.key === l.key);
-              const on = favs.includes(l.key);
-              return (
-                <li key={l.key}>
-                  <div className="sp-cand">
-                    <a className="link strong" href={l.href} target="_blank" rel="noreferrer">{l.label} ↗</a>
-                    <span className="muted small">{info?.about ?? l.hint}</span>
-                  </div>
-                  <button
-                    className={on ? 'mini on' : 'mini'}
-                    aria-pressed={on}
-                    title={on ? '从常用里去掉' : '放到常用（每一晚都直接显示）'}
-                    onClick={() => {
-                      const next = on ? favs.filter((k) => k !== l.key) : [...favs, l.key];
-                      setFavs(next);
-                      savePlatformPrefs(next);
-                    }}
-                  >
-                    {on ? '★ 常用' : '☆ 设为常用'}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <PlatformChips links={links} kind="stay" infos={MORE_PLATFORMS} />
       </div>
 
       {/* ② 粘贴 */}
@@ -516,13 +475,7 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
 
       <div className="sp-step">
         <div className="find-head">① 去平台找（按评分）</div>
-        <div className="sp-links">
-          {links.map((l) => (
-            <a key={l.key} className="sp-chip" href={l.href} target="_blank" rel="noreferrer" title={l.hint}>
-              {l.key === 'google-family' ? '适合带孩子' : l.label} ↗
-            </a>
-          ))}
-        </div>
+        <PlatformChips links={links} kind="dining" infos={MORE_DINING_PLATFORMS} />
       </div>
 
       <div className="sp-step">
@@ -578,5 +531,59 @@ export function DiningPicker({ trip, dayIndex, update }: { trip: Trip; dayIndex:
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 平台按钮：常用的直接显示，其余收在「更多平台」里（附每家的说明），可以设为常用（记在这台设备上）
+ */
+function PlatformChips({ links, kind, infos }: { links: SearchLink[]; kind: 'stay' | 'dining'; infos: PlatformInfo[] }) {
+  const [favs, setFavs] = useState<string[]>(() => loadPlatformPrefs(kind));
+  const [open, setOpen] = useState(false);
+  const label = (l: SearchLink) => (l.key === 'google-family' ? '适合带孩子' : l.label);
+  const hidden = links.filter((l) => !favs.includes(l.key)).length;
+  return (
+    <>
+      <div className="sp-links">
+        {links
+          .filter((l) => favs.includes(l.key))
+          .map((l) => (
+            <a key={l.key} className="sp-chip" href={l.href} target="_blank" rel="noreferrer" title={l.hint}>
+              {label(l)} ↗
+            </a>
+          ))}
+        <button className="sp-chip more" onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? '收起' : `更多平台（${hidden}）`}
+        </button>
+      </div>
+      {open && (
+        <ul className="plain sp-more">
+          {links.map((l) => {
+            const info = infos.find((p) => p.key === l.key);
+            const on = favs.includes(l.key);
+            return (
+              <li key={l.key}>
+                <div className="sp-cand">
+                  <a className="link strong" href={l.href} target="_blank" rel="noreferrer">{label(l)} ↗</a>
+                  <span className="muted small">{info?.about ?? l.hint}</span>
+                </div>
+                <button
+                  className={on ? 'mini on' : 'mini'}
+                  aria-pressed={on}
+                  title={on ? '从常用里去掉' : `放到常用（每${kind === 'stay' ? '一晚' : '一天'}都直接显示）`}
+                  onClick={() => {
+                    const next = on ? favs.filter((k) => k !== l.key) : [...favs, l.key];
+                    setFavs(next);
+                    savePlatformPrefs(next, kind);
+                  }}
+                >
+                  {on ? '★ 常用' : '☆ 设为常用'}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
   );
 }

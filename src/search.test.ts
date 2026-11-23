@@ -35,6 +35,17 @@ describe('平台搜索链接', () => {
     expect(get('kayak').pathname).toBe('/hotels/Robe,South-Australia,Australia/2026-12-12/2026-12-14/2adults/2children-10-8');
     expect(links.map((l) => l.key)).toEqual(expect.arrayContaining(['booking', 'airbnb', 'wotif', 'expedia', 'hotelscom', 'stayz', 'agoda', 'tripcom', 'kayak', 'parks']));
   });
+  it('餐厅更多平台：美食指南、订位、旅游局、小红书', () => {
+    const sa = diningSearchLinks('Adelaide SA', '2026-12-14', 4);
+    const get = (k: string) => new URL(sa.find((l) => l.key === k)!.href);
+    expect(get('goodfood').searchParams.get('q')).toBe('site:goodfood.com.au Adelaide');
+    expect(get('tourism').searchParams.get('q')).toContain('southaustralia.com');
+    expect(get('xhs').searchParams.get('keyword')).toBe('Adelaide 美食 亲子');
+    const vic = diningSearchLinks('Lorne VIC', '2026-12-12', 4);
+    expect(new URL(vic.find((l) => l.key === 'tourism')!.href).searchParams.get('q')).toContain('visitvictoria.com');
+    expect(platformOf('https://www.xiaohongshu.com/explore/123')).toBe('小红书');
+    expect(platformOf('https://www.goodfood.com.au/x')).toBe('Good Food Guide');
+  });
   it('餐厅搜索和订位人数', () => {
     const links = diningSearchLinks('Adelaide SA', '2026-12-14', 4);
     expect(links.map((l) => l.label)).toContain('Tripadvisor');

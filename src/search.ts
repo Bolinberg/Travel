@@ -181,18 +181,20 @@ function moreStayLinks(q: StayQuery, where: string, kids: number): SearchLink[] 
 
 /** 默认显示的平台（其余在「更多平台」里，可以设为常用） */
 export const DEFAULT_STAY_PLATFORMS = ['booking', 'airbnb', 'wotif', 'tripadvisor', 'google'];
-const PREF_KEY = 'travel-planner.platforms';
-export function loadPlatformPrefs(): string[] {
+export const DEFAULT_DINING_PLATFORMS = ['tripadvisor', 'google', 'google-family', 'opentable'];
+const PREF_KEYS = { stay: 'travel-planner.platforms', dining: 'travel-planner.platforms.dining' };
+export function loadPlatformPrefs(kind: 'stay' | 'dining' = 'stay'): string[] {
+  const def = kind === 'stay' ? DEFAULT_STAY_PLATFORMS : DEFAULT_DINING_PLATFORMS;
   try {
-    const v = JSON.parse(localStorage.getItem(PREF_KEY) ?? 'null');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : DEFAULT_STAY_PLATFORMS;
+    const v = JSON.parse(localStorage.getItem(PREF_KEYS[kind]) ?? 'null');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : def;
   } catch {
-    return DEFAULT_STAY_PLATFORMS;
+    return def;
   }
 }
-export function savePlatformPrefs(keys: string[]) {
+export function savePlatformPrefs(keys: string[], kind: 'stay' | 'dining' = 'stay') {
   try {
-    localStorage.setItem(PREF_KEY, JSON.stringify(keys));
+    localStorage.setItem(PREF_KEYS[kind], JSON.stringify(keys));
   } catch {
     /* 存不了就只在这次有效 */
   }
@@ -225,6 +227,31 @@ export function diningSearchLinks(place: string, date: string, covers: number): 
       hint: `订位 · ${covers} 人`,
       href: 'https://www.opentable.com.au/s?' + qs({ term: where, covers: String(covers), dateTime: `${date}T18:00` }),
     },
+    ...moreDiningLinks(where),
+  ];
+}
+
+/** 餐厅「更多平台」：都是澳洲公认的美食指南 / 订位平台，外加中文用户常看的小红书 */
+export const MORE_DINING_PLATFORMS: PlatformInfo[] = [
+  { key: 'goodfood', label: 'Good Food Guide', about: '澳洲最权威的餐厅指南（《The Age》《悉尼先驱晨报》出品），「厨师帽」相当于米其林星' },
+  { key: 'gourmet', label: 'Gourmet Traveller', about: '老牌美食旅行杂志，地区特色餐厅和酒庄推荐多' },
+  { key: 'broadsheet', label: 'Broadsheet', about: '本地人常看的城市指南，阿德莱德、墨尔本的咖啡馆和新店最全' },
+  { key: 'quandoo', label: 'Quandoo', about: '和 OpenTable 一样的在线订位平台，有的餐厅只在这里能订' },
+  { key: 'tourism', label: '州旅游局', about: 'South Australia / Visit Victoria 官方网站，当地特色餐厅、酒庄和农场直营店' },
+  { key: 'xhs', label: '小红书', about: '中文游客的真实笔记，找适合带孩子的店、看实拍菜品方便（个人体验，看多几篇再定）' },
+];
+
+function moreDiningLinks(where: string): SearchLink[] {
+  const town = where.split(',')[0].trim();
+  const site = (domain: string, extra = '') => 'https://www.google.com/search?' + qs({ q: `site:${domain} ${town}${extra}` });
+  const sa = /South Australia/.test(where);
+  return [
+    { key: 'goodfood', label: 'Good Food Guide', hint: '获奖餐厅', href: site('goodfood.com.au') },
+    { key: 'gourmet', label: 'Gourmet Traveller', hint: '地区特色', href: site('gourmettraveller.com.au') },
+    { key: 'broadsheet', label: 'Broadsheet', hint: '咖啡馆和新店', href: site('broadsheet.com.au') },
+    { key: 'quandoo', label: 'Quandoo', hint: '订位', href: site('quandoo.com.au') },
+    { key: 'tourism', label: '州旅游局', hint: '当地特色', href: site(sa ? 'southaustralia.com' : 'visitvictoria.com', ' eat drink') },
+    { key: 'xhs', label: '小红书', hint: '中文笔记', href: 'https://www.xiaohongshu.com/search_result?' + qs({ keyword: `${town} 美食 亲子` }) },
   ];
 }
 
@@ -246,6 +273,11 @@ export function platformOf(url: string): string {
   if (/agoda\./.test(host)) return 'Agoda';
   if (/trip\.com$/.test(host)) return 'Trip.com';
   if (/kayak\./.test(host)) return 'Kayak';
+  if (/goodfood\.com\.au$/.test(host)) return 'Good Food Guide';
+  if (/gourmettraveller\.com\.au$/.test(host)) return 'Gourmet Traveller';
+  if (/broadsheet\.com\.au$/.test(host)) return 'Broadsheet';
+  if (/quandoo\./.test(host)) return 'Quandoo';
+  if (/xiaohongshu\.com$|xhslink\.com$/.test(host)) return '小红书';
   if (/trivago\./.test(host)) return 'trivago';
   if (/big4\.com\.au$/.test(host)) return 'BIG4';
   if (/discoveryholidayparks\.com\.au$/.test(host)) return 'Discovery Parks';
