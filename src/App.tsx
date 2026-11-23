@@ -152,6 +152,20 @@ export default function App() {
     saveStore(store);
   }, [store]);
 
+  // 有的日子还没有里程车程（比如刚应用了粘贴的行程）：自动查位置、按真实道路算（每组地址只试一次）
+  const routedOnce = useRef(new Set<string>());
+  useEffect(() => {
+    const todo = trip.days.filter(
+      (d) => !d.manualRoute && !d.km && d.from.trim() && d.to.trim() && d.from !== d.to && !routedOnce.current.has(d.id + routeKey(d)),
+    );
+    if (!todo.length) return;
+    todo.forEach((d) => routedOnce.current.add(d.id + routeKey(d)));
+    (async () => {
+      for (const d of todo) await autoRouteDay(trip, d, update);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip]);
+
   // 绑定当前行程 id：异步操作（如查坐标）完成时即使已切换行程，也写回原行程
   const tripId = trip.id;
   const update: Update = (mutate) =>

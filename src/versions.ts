@@ -50,7 +50,7 @@ export const KIND_LABEL: Record<TripVersion['kind'], string> = {
 export function planOptions(trip: Trip): TripVersion[] {
   return (trip.versions ?? [])
     .filter((v) => v.kind === 'proposal')
-    .slice(-4)
+    .slice(-6) // 最多同时比较 6 个方案
     .sort((a, b) => a.label.localeCompare(b.label, 'zh'));
 }
 

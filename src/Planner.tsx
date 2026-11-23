@@ -5,6 +5,7 @@ import { currentPlanId, planOptions, versionTrip } from './versions';
 import { editEngine, editPlanWithAi } from './ai';
 import { proposalFromAi, proposalTrip, type Proposal } from './replan';
 import { Comparison } from './Replan';
+import { looksLikeItinerary, parseItineraryText } from './itineraryParse';
 import { MultiCompare } from './Versions';
 import TripMap from './TripMap';
 
@@ -241,6 +242,41 @@ export function AskBar({
     }
   };
 
+  /**
+   * 粘贴一整份行程：先按规则排出来给你看对比；能用 Claude 时再请 Claude 细化
+   * （估里程车程、补上认不出的地点），细化好了替换掉。
+   */
+  const pasteItinerary = (raw: string): boolean => {
+    if (!looksLikeItinerary(raw)) return false;
+    const plan = parseItineraryText(raw, trip);
+    setText('');
+    setError('');
+    setResult({ proposal: proposalFromAi(trip, plan), title: plan.title ?? '粘贴的行程', instruction: '粘贴的行程', engine: '自动识别' });
+    if (engine) {
+      setBusy(true);
+      setStatus('Claude 正在细化这份行程（估里程车程、补上认不出的地点）…');
+      ctl.current = new AbortController();
+      const instruction = `我粘贴了一份行程，请按它重新安排整个行程：天数、每天去哪、住哪以粘贴内容为准；原行程里同样的日子尽量沿用（kind 填 same）；没写的里程和车程按真实道路估；地名用和原行程一致的写法，新地点在 places 里给坐标。\n\n<粘贴的行程>\n${raw.slice(0, 6000)}\n</粘贴的行程>`;
+      editPlanWithAi(trip, instruction, setStatus, ctl.current.signal)
+        .then((r) =>
+          setResult((cur) =>
+            cur && cur.instruction === '粘贴的行程'
+              ? { proposal: proposalFromAi(trip, r.plan), title: r.plan.title || cur.title, instruction: '粘贴的行程', engine: r.engine === 'claude' ? 'Claude（已细化）' : 'AI（已细化）' }
+              : cur,
+          ),
+        )
+        .catch(() => {
+          /* 细化失败就用自动识别的结果 */
+        })
+        .finally(() => {
+          setBusy(false);
+          setStatus('');
+          ctl.current = null;
+        });
+    }
+    return true;
+  };
+
   const nextLetter = useMemo(() => {
     const used = new Set(planOptions(trip).map((v) => v.label.split('：')[0]));
     if (!planOptions(trip).length) return 'B';
@@ -259,7 +295,7 @@ export function AskBar({
         className="ask"
         onSubmit={(e) => {
           e.preventDefault();
-          run(text);
+          if (!pasteItinerary(text)) run(text);
         }}
       >
         <label className="ask-label" htmlFor="ask-input">
@@ -271,12 +307,15 @@ export function AskBar({
             ref={input}
             rows={1}
             value={text}
-            placeholder={engine === null ? '在 Claude 里打开本页可直接使用；网页版需在设置里填 API Key' : '例如：最后一天直接回家，不去格兰扁'}
+            placeholder={engine === null ? '粘贴一整份行程（第 1 天… 第 2 天…）可直接识别；一句话修改需在 Claude 里打开或填 API Key' : '例如：最后一天直接回家，不去格兰扁；也可以粘贴一整份行程'}
+            onPaste={(e) => {
+              if (pasteItinerary(e.clipboardData.getData('text'))) e.preventDefault();
+            }}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                run(text);
+                if (!pasteItinerary(text)) run(text);
               }
             }}
           />
