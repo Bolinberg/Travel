@@ -115,12 +115,41 @@ export function useWiki(title?: string): WikiInfo | null {
 /* ---------- 地点查询 ---------- */
 
 /** country：两位国家代码（如 au），行程都在同一个国家时用来避免查到别国的同名地点 */
-export async function geocode(name: string, country?: string): Promise<{ lat: number; lng: number } | null> {
+const AU_STATES: Record<string, string> = {
+  VIC: 'Victoria',
+  SA: 'South Australia',
+  NSW: 'New South Wales',
+  QLD: 'Queensland',
+  WA: 'Western Australia',
+  TAS: 'Tasmania',
+  NT: 'Northern Territory',
+  ACT: 'Australian Capital Territory',
+};
+
+/**
+ * 一个地址的几种写法，从精确到宽松：
+ * 「2 Bridge St, Murray Bridge SA 5253」→ 原样 → 州名写全 → 去掉门牌号 → 去掉邮编 → 只留城镇。
+ * 免费的地点查询服务常常认不出带州名缩写、邮编、门牌号的完整地址，所以一种查不到就换下一种。
+ */
+export function geocodeCandidates(name: string): string[] {
+  const raw = name.trim().replace(/\s+/g, ' ');
+  const expand = (x: string) => {
+    let y = x.replace(/\b(VIC|SA|NSW|QLD|WA|TAS|NT|ACT)\b/g, (m) => AU_STATES[m] ?? m);
+    if (y !== x && !/,\s*australia\s*$/i.test(y)) y += ', Australia';
+    return y.replace(/\s+,/g, ',');
+  };
+  const noNumber = raw.replace(/^(unit|shop|lot)?\s*\d+[a-z]?(\s*[-/]\s*\d+[a-z]?)?\s+/i, '');
+  const noPost = (x: string) => x.replace(/,?\s*\b\d{4}\b\s*$/, '').replace(/\b\d{4}\b(?=,?\s*(australia)?$)/i, '').trim().replace(/,\s*$/, '');
+  const parts = raw.split(',').map((x) => x.trim()).filter(Boolean);
+  const town = parts.length > 1 ? parts.slice(1).join(', ') : '';
+  const list = [raw, expand(raw), expand(noPost(raw)), expand(noPost(noNumber)), noPost(noNumber), town && expand(noPost(town)), town && noPost(town)];
+  return [...new Set(list.map((x) => x.trim()).filter((x) => x.length > 2))];
+}
+
+async function geocodeOnce(q: string, country?: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
-        encodeURIComponent(name) +
-        (country ? `&countrycodes=${country}` : ''),
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q) + (country ? `&countrycodes=${country}` : ''),
     );
     if (!r.ok) return null;
     const [hit] = await r.json();
@@ -128,6 +157,40 @@ export async function geocode(name: string, country?: string): Promise<{ lat: nu
   } catch {
     return null;
   }
+}
+
+// 地点查询服务要求每秒不超过 1 次：所有查询排队
+let geoQueue: Promise<unknown> = Promise.resolve();
+let lastAt = 0;
+function queued<T>(job: () => Promise<T>): Promise<T> {
+  const run = geoQueue.then(async () => {
+    const wait = lastAt + 1100 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await job();
+    } finally {
+      lastAt = Date.now();
+    }
+  });
+  geoQueue = run.catch(() => undefined);
+  return run;
+}
+
+const failedNames = new Set<string>();
+/** 这个地址这次打开页面后已经查过、几种写法都没查到 */
+export const geocodeFailed = (name: string) => failedNames.has(name.trim().toLowerCase());
+
+export async function geocode(name: string, country?: string): Promise<{ lat: number; lng: number } | null> {
+  for (const q of geocodeCandidates(name)) {
+    const hit = await queued(() => geocodeOnce(q, country));
+    if (hit) {
+      failedNames.delete(name.trim().toLowerCase());
+      return hit;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+  }
+  failedNames.add(name.trim().toLowerCase());
+  return null;
 }
 
 /* ---------- 外部链接 ---------- */
@@ -151,8 +214,5 @@ export async function geocodeAll(
   names: string[],
   onFound: (name: string, hit: { lat: number; lng: number } | null) => void,
 ): Promise<void> {
-  for (let i = 0; i < names.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 1100));
-    onFound(names[i], await geocode(names[i]));
-  }
+  for (const n of names) onFound(n, await geocode(n));
 }

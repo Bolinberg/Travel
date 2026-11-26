@@ -56,7 +56,6 @@ export async function autoRouteDay(
   for (let i = 0; i < unknown.length; i++) {
     const name = unknown[i];
     onStatus(`正在查「${shortName(name)}」的位置…`);
-    if (i > 0) await new Promise((r) => setTimeout(r, 1100)); // 地点查询服务限 1 次/秒
     const hit = await geocode(name, country);
     if (hit) found.push({ name, label: shortName(name), ...hit });
     else missing.push(name);
@@ -74,6 +73,8 @@ export async function autoRouteDay(
 
   // 3. 按真实道路算里程和车程
   onStatus('正在按真实道路计算里程和时间…');
+  // 有地址查不到位置：不写回（只算了一部分路，会误导），等地址改好再算
+  if (missing.length) return { km: 0, hours: 0, estimated: 0, missing };
   const r = await routeDay(withPlaces, routed);
   if (!r.segments.length) return { km: 0, hours: 0, estimated: 0, missing };
 
@@ -86,4 +87,12 @@ export async function autoRouteDay(
     d.routeKey = routeKey(d);
   });
   return { km: r.km, hours: r.hours, estimated: r.failed, missing, modeChanged: routed.mode !== day.mode ? routed.mode : undefined };
+}
+
+/** 这一天需要重新算里程车程吗（地址改过、还没算过、或有地址还没上地图） */
+export function needsRoute(trip: Trip, d: Day): boolean {
+  if (d.manualRoute || !d.from.trim() || !d.to.trim() || d.from.trim() === d.to.trim()) return false;
+  if (!d.km) return true;
+  if (d.routeKey !== undefined && d.routeKey !== routeKey(d)) return true;
+  return [d.from, ...d.stops, d.to].some((n) => n.trim() && !findPlace(trip, n));
 }

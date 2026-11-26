@@ -12,7 +12,7 @@ import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './te
 import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
-import { autoRouteDay, routeKey } from './autoRoute';
+import { autoRouteDay, needsRoute, routeKey } from './autoRoute';
 import StayPicker, { DiningPicker, PlatformChips } from './StayPicker';
 import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, transportLinks } from './search';
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
@@ -23,7 +23,7 @@ import { exportText, loadBackups, mergeIntoStore, parseExport, restoreBackup, us
 import { JoinPrompt, SyncBadge } from './SyncUI';
 import { parseInvite } from './sync';
 import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
-import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
+import { findPlace, geocode, geocodeFailed, geocodeAll, links, missingPlaces, useWiki } from './geo';
 import { dayMode, dayPointNames, googleDirections, isDriveDay, MODE_KEYS, MODES, modeSummary, orderStops, routeDay } from './route';
 import type { Mode } from './types';
 
@@ -98,6 +98,8 @@ function dismissOffer() {
 export default function App() {
   const [store, setStore] = useState<Store>(initialStore);
   const trip = store.trips.find((t) => t.id === store.activeId) ?? store.trips[0];
+  const tripRef = useRef(trip);
+  tripRef.current = trip;
   const [tab, setTab] = useState<Tab>('itinerary');
   const wide = useWide();
   const [showTrips, setShowTrips] = useState(false);
@@ -162,17 +164,19 @@ export default function App() {
     saveStore(store);
   }, [store]);
 
-  // 有的日子还没有里程车程（比如刚应用了粘贴的行程）：自动查位置、按真实道路算（每组地址只试一次）
+  // 地址改了、还没算过、或有地址还没上地图：后台自动查位置、按真实道路重算里程和车程（每组地址每次打开只试一次）
   const routedOnce = useRef(new Set<string>());
+  const routeQueue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    const todo = trip.days.filter(
-      (d) => !d.manualRoute && !d.km && d.from.trim() && d.to.trim() && d.from !== d.to && !routedOnce.current.has(d.id + routeKey(d)),
-    );
+    const todo = trip.days.filter((d) => needsRoute(trip, d) && !routedOnce.current.has(d.id + routeKey(d)));
     if (!todo.length) return;
     todo.forEach((d) => routedOnce.current.add(d.id + routeKey(d)));
-    (async () => {
-      for (const d of todo) await autoRouteDay(trip, d, update);
-    })();
+    routeQueue.current = routeQueue.current.then(async () => {
+      for (const d of todo) {
+        const latest = tripRef.current.days.find((x) => x.id === d.id);
+        if (latest && routeKey(latest) === routeKey(d)) await autoRouteDay(tripRef.current, latest, update).catch(() => null);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip]);
 
@@ -700,6 +704,28 @@ function Timeline({
 
 type DayTab = 'plan' | 'sights' | 'stays' | 'dining';
 
+/** 里程车程还在算，或有地址查不到位置：说清楚，别让人以为数字是对的 */
+function RouteNotice({ trip, day, onEdit }: { trip: Trip; day: Day; onEdit: () => void }) {
+  const [, tick] = useState(0);
+  const pending = needsRoute(trip, day);
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => tick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [pending]);
+  if (!pending) return null;
+  const missing = [day.from, ...day.stops, day.to].map((n) => n.trim()).filter((n) => n && !findPlace(trip, n));
+  const failed = missing.filter(geocodeFailed);
+  return failed.length ? (
+    <p className="small warn-text route-notice">
+      地图上找不到「{failed.map(short).join('、')}」，里程、车程、油费还没按新地址算。
+      <button className="link" onClick={onEdit}>改写地址</button>（如只写「Murray Bridge SA」）
+    </p>
+  ) : (
+    <p className="small muted route-notice">正在按新地址重算里程、车程和油费…</p>
+  );
+}
+
 function DayDetail({
   trip,
   index,
@@ -776,6 +802,7 @@ function DayDetail({
               <dd className="dd-mode">{modeSummary(day)}</dd>
             </div>
           </dl>
+          <RouteNotice trip={trip} day={day} onEdit={() => setEditing(true)} />
           <div className="dd-tabs" role="tablist" aria-label="这一天">
             {tabs.map(([k, label]) => (
               <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -979,7 +1006,6 @@ function DayEditor({
   const day = trip.days[index];
   const acc = day.accommodation;
   const prev = trip.days[index - 1];
-  const next = trip.days[index + 1];
   const last = index === trip.days.length - 1;
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -987,32 +1013,29 @@ function DayEditor({
   const listId = `places-${day.id}`;
   const fuel = isDriveDay(day) ? fuelCost(day.km, trip.vehicle.litresPer100km, trip.vehicle.fuelPrice) : 0;
 
-  // 地址改了就自动重算（打开时已经算好的不重算，避免覆盖原来按实际情况调过的车程）
-  const key = routeKey(day);
-  const openedKey = useRef(day.routeKey ?? key);
-  const isNew = day.km === 0 && day.from.trim() !== '' && day.to.trim() !== '' && day.from.trim() !== day.to.trim();
+  // 地址改了：整个行程在后台自动重算（App 里），这里只显示进度和查不到的地址
+  const missingNames = [day.from, ...day.stops, day.to].map((n) => n.trim()).filter((n) => n && !findPlace(trip, n));
+  const pending = needsRoute(trip, day);
+  const [, tick] = useState(0);
   useEffect(() => {
-    if (day.manualRoute || !day.from.trim() || !day.to.trim()) return;
-    if (key === day.routeKey || (key === openedKey.current && !isNew)) return;
-    let alive = true;
-    const timer = setTimeout(async () => {
-      setBusy(true);
-      const r = await autoRouteDay(trip, day, update, (s) => alive && setStatus(s));
-      if (!alive) return;
-      setBusy(false);
-      if (!r) return setStatus('');
-      const parts = [];
-      if (r.missing.length) parts.push(`没找到「${r.missing.map(short).join('、')}」的位置，可以写得更完整，如「Lorne VIC」「Victor Harbor SA」`);
-      if (r.modeChanged) parts.push(`交通方式已按距离自动改成「${MODES[r.modeChanged].label}」，可在「高级」里改`);
-      if (r.estimated) parts.push(`有 ${r.estimated} 段没取到真实道路（可能离线），先按直线估算`);
-      setStatus(parts.join('；'));
-    }, 300);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
+    if (!pending) return;
+    const t = setInterval(() => tick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [pending]);
+  const failed = missingNames.filter((n) => geocodeFailed(n));
+  useEffect(() => {
+    setBusy(pending && !failed.length);
+    setStatus(
+      failed.length
+        ? `没找到「${failed.map(short).join('、')}」的位置，里程还没算。可以写成「街道, 城镇 州」或只写城镇，如「Murray Bridge SA」`
+        : pending
+          ? missingNames.length
+            ? `正在查「${missingNames.map(short).join('、')}」的位置…`
+            : '正在按真实道路计算里程和时间…'
+          : '',
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, day.manualRoute]);
+  }, [pending, failed.join('|'), missingNames.join('|')]);
 
   /** 改地址：标题是自动生成的就跟着改；改了目的地，第二天的出发地也跟着改 */
   const setPlaces = (mutate: (d: Day) => void) =>
@@ -1022,6 +1045,7 @@ function DayEditor({
       if (!d) return;
       const wasAuto = !d.title.trim() || d.title === '新的一天' || d.title === autoTitle(d);
       const oldTo = d.to;
+      if (d.routeKey === undefined && d.km > 0) d.routeKey = routeKey(d); // 记下改之前的地址，改了才知道要重算
       mutate(d);
       d.stops = d.stops.map((s) => s.trim()).filter(Boolean);
       if (wasAuto || oldTo.trim() !== d.to.trim()) d.title = autoTitle(d);
@@ -1041,19 +1065,12 @@ function DayEditor({
       const n = t.days[i + 1];
       if (n && oldTo !== d.to && n.from.trim() === oldTo.trim()) {
         const nAuto = !n.title.trim() || n.title === autoTitle(n);
+        if (n.routeKey === undefined && n.km > 0) n.routeKey = routeKey(n);
         n.from = d.to;
         if (nAuto) n.title = autoTitle(n);
       }
     });
 
-  // 第二天的出发地跟着改了：也帮它重算
-  useEffect(() => {
-    if (!next || next.manualRoute || routeKey(next) === next.routeKey || next.from.trim() !== day.to.trim()) return;
-    if (next.routeKey === undefined && next.km > 0) return; // 原来就有的数据，没改过出发地
-    const timer = setTimeout(() => void autoRouteDay(trip, next, update), 2500);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [next?.from]);
 
   const known = [...new Set(trip.places.map((p) => p.name))];
 
