@@ -82,3 +82,12 @@ describe('识别粘贴的预订确认', () => {
     expect(findDates('12/12/2026 and Dec 13', 2026).map((d) => d.date)).toEqual(['2026-12-12', '2026-12-13']);
   });
 });
+
+describe('开头是“预订已确认”这类套话', () => {
+  it('跳过套话行，取下面的住宿名', async () => {
+    const { parseBookingText } = await import('./bookingParse');
+    const r = parseBookingText('Your booking is confirmed\nThe Barn Accommodation\nConfirmation number: 4821937765\nCheck-in Saturday, 12 December 2026\nCheck-out Sunday, 13 December 2026\nTotal price AUD 289.00', 2026);
+    expect(r.name).toBe('The Barn Accommodation');
+    expect(r.total).toBe(289);
+  });
+});

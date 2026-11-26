@@ -101,6 +101,7 @@ function findName(text: string, url: string): string {
     if (line.length < 4 || line.length > 70) continue;
     if (LABEL_LINE.test(line) || /https?:|@|\d{4}|\$/.test(line)) continue;
     if (/^(thanks|thank you|hi|dear|hello|谢谢|感谢|您好|你好)/i.test(line)) continue;
+    if (/^(your|you're|you are|we're|we are|great news|good news|congrat|all set|it's booked|order|receipt|itinerary)\b|\b(is|has been) (confirmed|booked)\b|booking (confirmed|confirmation)/i.test(line)) continue;
     if (/[A-Za-z]/.test(line) && /^[A-Z0-9]/.test(line)) return line;
   }
   return url ? '' : '';

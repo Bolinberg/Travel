@@ -18,6 +18,7 @@ import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, tra
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
+import { useFamilyShare, type ShareState } from './familyShare';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
 import { parseInvite } from './sync';
 import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
@@ -101,6 +102,8 @@ export default function App() {
   const [showTrips, setShowTrips] = useState(false);
   const [kiOffer, setKiOffer] = useState(() => !offerDismissed());
   const sync = useSync(store, setStore);
+  // 在 Claude 里打开时：全家共用同一份行程
+  const share = useFamilyShare(store, setStore);
   // 打开邀请链接（#join=…）时提示加入
   const [invite, setInvite] = useState(() => (typeof location !== 'undefined' ? parseInvite(location.hash) : null));
   const closeInvite = () => {
@@ -269,7 +272,8 @@ export default function App() {
           </button>
         </div>
         <div className="masthead-actions">
-          <SyncBadge state={sync.state} onClick={() => goTo('settings')} />
+          <ShareBadge state={share} onClick={() => goTo('settings')} />
+          {share.mode === 'off' && <SyncBadge state={sync.state} onClick={() => goTo('settings')} />}
           <button className={`icon-btn${tab === 'settings' ? ' on' : ''}`} aria-label="设置" title="设置" onClick={() => goTo('settings')}>
             <Icon name="settings" />
           </button>
@@ -415,7 +419,11 @@ export default function App() {
           )}
           {tab === 'settings' && (
             <Settings trip={trip} update={update} onImport={addTrip}>
-              <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
+              {share.mode !== 'off' ? (
+                <FamilyShareCard state={share} />
+              ) : (
+                <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
+              )}
             </Settings>
           )}
         </main>
@@ -2132,4 +2140,51 @@ function AgesInput({ trip, update }: { trip: Trip; update: Update }) {
     setText(childAges({ ...trip, childAges: ages }).join(', '));
   };
   return <input inputMode="numeric" value={text} placeholder="如 8, 6" onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+}
+
+/* ---------------- 家人共享（在 Claude 里打开时） ---------------- */
+
+function ShareBadge({ state, onClick }: { state: ShareState; onClick: () => void }) {
+  if (state.mode === 'off') return null;
+  const [cls, text] =
+    state.mode === 'live'
+      ? state.canWrite
+        ? ['ok', '家人共享']
+        : ['ro', '只能查看']
+      : state.mode === 'connecting'
+        ? ['busy', '连接中…']
+        : state.mode === 'waiting'
+          ? ['ro', '等主人打开']
+          : ['err', '未同步'];
+  return (
+    <button className={`share-badge ${cls}`} onClick={onClick} title="全家共用同一份行程">
+      <span className="dot" aria-hidden="true" />
+      {text}
+    </button>
+  );
+}
+
+function FamilyShareCard({ state }: { state: ShareState }) {
+  return (
+    <section className="card">
+      <h2>和家人一起编辑</h2>
+      {state.mode === 'live' && state.canWrite && (
+        <p className="small sp-added">已连上共享：你和家人看到、编辑的是同一份行程，改动几秒内互相出现。</p>
+      )}
+      {state.mode === 'live' && !state.canWrite && (
+        <p className="small warn-text">你现在只能查看。请页面的主人在分享设置里把你改成「Editor（编辑者）」或「Contributor（参与者）」。</p>
+      )}
+      {state.mode === 'waiting' && (
+        <p className="small warn-text">共享里还没有行程。请页面的主人（建这个行程的人）在 Claude 里打开一次这个页面，他设备上的行程会自动放上来。</p>
+      )}
+      {state.mode === 'error' && <p className="small warn-text">{state.message}</p>}
+      {state.mode === 'connecting' && <p className="small muted">正在连接共享…</p>}
+      <ol className="small share-steps">
+        <li>在 Claude 里打开这个页面，点右上角的 <b>Share（分享）</b>。</li>
+        <li>输入家人的邮箱邀请，权限选 <b>Editor（编辑者）</b> 或 <b>Contributor（参与者）</b>；选 Viewer（查看者）的话只能看不能改。</li>
+        <li>家人用自己的 Claude 账号打开同一个链接，就能一起加住宿、餐厅、清单、记账，改动会同步给所有人。</li>
+      </ol>
+      <p className="muted small">网站版（bolinberg.github.io）每台设备各存一份，不会互相同步；要一起编辑请都用 Claude 里的这个页面。</p>
+    </section>
+  );
 }
