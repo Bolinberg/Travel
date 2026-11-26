@@ -17,7 +17,16 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   other: '其他',
 };
 
+/** 在地图上的位置（key 记下是按哪个名字 / 地址查的，名字或地址改了就重查） */
+export interface GeoPin {
+  lat: number;
+  lng: number;
+  key: string;
+}
+
 export interface Accommodation {
+  /** 地图位置 */
+  geo?: GeoPin;
   name: string;
   cost: number;
   booked: boolean;
@@ -62,6 +71,8 @@ export interface Rec {
   top?: boolean;
   /** 餐厅已订位 */
   booked?: boolean;
+  /** 地图位置 */
+  geo?: GeoPin;
 }
 
 /** 交通方式 */

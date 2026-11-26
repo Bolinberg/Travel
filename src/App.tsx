@@ -13,6 +13,7 @@ import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
 import { autoRouteDay, needsRoute, routeKey } from './autoRoute';
+import { dayPois, locatePoi, poiKey, poiLocated, savePoiGeo, type Poi } from './poi';
 import StayPicker, { DiningPicker, PlatformChips } from './StayPicker';
 import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, transportLinks } from './search';
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
@@ -179,6 +180,31 @@ export default function App() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip]);
+
+  // 住宿和餐厅：后台查位置，标到地图上（已选 / 已订的每天都查；打开某一天时连候选也查）
+  const poiTried = useRef(new Set<string>());
+  useEffect(() => {
+    // 同一家（同名同地址）只查一次，查到后所有天都用上
+    const jobs = new Map<string, { d: Day; refs: Poi['ref'][]; p: Poi }>();
+    trip.days.forEach((d, i) => {
+      for (const p of dayPois(d, openDay === i)) {
+        const k = poiKey(p);
+        if (poiLocated(p)) continue;
+        const j = jobs.get(k);
+        if (j) j.refs.push(p.ref);
+        else if (!poiTried.current.has(k)) jobs.set(k, { d, p, refs: [p.ref] });
+      }
+    });
+    if (!jobs.size) return;
+    for (const k of jobs.keys()) poiTried.current.add(k);
+    routeQueue.current = routeQueue.current.then(async () => {
+      for (const { d, p, refs } of jobs.values()) {
+        const geo = await locatePoi(tripRef.current, d, p).catch(() => null);
+        if (geo) update((t) => refs.forEach((r) => savePoiGeo(t, r, geo)));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip, openDay]);
 
   // 绑定当前行程 id：异步操作（如查坐标）完成时即使已切换行程，也写回原行程
   const tripId = trip.id;

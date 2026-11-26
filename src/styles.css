@@ -3501,3 +3501,20 @@ ul.plain.sp-more > li {
 .carry-in { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line, #e5e5e5); }
 .carry-in h3 { font-size: 15px; margin: 0 0 4px; }
 .carry-in textarea { width: 100%; }
+
+/* 地图上的住宿 / 餐厅 */
+.poi-pin {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #fff;
+  border: 2px solid var(--day, #2f6f5e);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+}
+.poi-pin.dining { border-radius: 50%; }
+.poi-pin.booked { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--day, #2f6f5e); }
+.poi-pin.cand { opacity: 0.55; border-style: dashed; transform: scale(0.85); }
+.pop a { font-size: 13px; }

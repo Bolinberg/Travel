@@ -146,10 +146,11 @@ export function geocodeCandidates(name: string): string[] {
   return [...new Set(list.map((x) => x.trim()).filter((x) => x.length > 2))];
 }
 
-async function geocodeOnce(q: string, country?: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeOnce(q: string, country?: string, near?: { lat: number; lng: number }): Promise<{ lat: number; lng: number } | null> {
   try {
+    const box = near ? `&bounded=1&viewbox=${near.lng - 0.6},${near.lat + 0.6},${near.lng + 0.6},${near.lat - 0.6}` : '';
     const r = await fetch(
-      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q) + (country ? `&countrycodes=${country}` : ''),
+      'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q) + (country ? `&countrycodes=${country}` : '') + box,
     );
     if (!r.ok) return null;
     const [hit] = await r.json();
@@ -174,6 +175,32 @@ function queued<T>(job: () => Promise<T>): Promise<T> {
   });
   geoQueue = run.catch(() => undefined);
   return run;
+}
+
+/**
+ * 查住宿 / 餐厅的位置：先按地址（不退到只查城镇，否则会标到镇中心），再按「名字, 城镇」、名字。
+ * 给了 near（当天目的地）就只在附近找。
+ */
+export async function geocodePoi(
+  name: string,
+  town: string,
+  address: string,
+  near?: { lat: number; lng: number },
+): Promise<{ lat: number; lng: number } | null> {
+  const qs: string[] = [];
+  if (address.trim()) {
+    const street = address.split(',')[0].replace(/^(unit|shop|lot)?\s*\d+[a-z]?(\s*[-/]\s*\d+[a-z]?)?\s+/i, '').trim().toLowerCase();
+    qs.push(...geocodeCandidates(address).filter((c) => !street || c.toLowerCase().includes(street)));
+  }
+  const n = name.trim();
+  if (town.trim()) qs.push(...geocodeCandidates(`${n}, ${town.trim()}`).filter((c) => c.toLowerCase().includes(n.toLowerCase())));
+  if (near) qs.push(n);
+  for (const q of [...new Set(qs)]) {
+    const hit = await queued(() => geocodeOnce(q, 'au', near));
+    if (hit) return hit;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+  }
+  return null;
 }
 
 const failedNames = new Set<string>();

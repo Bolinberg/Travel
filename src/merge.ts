@@ -21,6 +21,7 @@ function mergeRecs(base: Rec[], extra: Rec[]): Rec[] {
     if (!m.bookingUrl && e.bookingUrl) m.bookingUrl = e.bookingUrl;
     if (!m.cost && e.cost) m.cost = e.cost;
     if (!m.rating && e.rating) m.rating = e.rating;
+    if (!m.geo && e.geo) m.geo = e.geo;
     if (e.note && !norm(m.note).includes(norm(e.note))) m.note = m.note ? `${m.note}\n${e.note}` : e.note;
   }
   return out;

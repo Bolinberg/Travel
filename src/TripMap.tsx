@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { dayPois, poiLocated, type Poi } from './poi';
 import 'leaflet/dist/leaflet.css';
 import type { Day, Mode, Place, Trip } from './types';
 import { fetchWiki, findPlace } from './geo';
@@ -53,6 +54,17 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+function poiPopup(p: Poi, dayIndex: number) {
+  const tag = p.booked ? (p.kind === 'stay' ? '已订' : '已订位') : p.chosen ? '已选' : '候选';
+  const link = p.url && /^https:\/\//.test(p.url) ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">打开页面 ↗</a>` : '';
+  return `<div class="pop">
+    <b>${p.kind === 'stay' ? '🛏' : '🍴'} ${escapeHtml(p.name)}</b>
+    <p>D${dayIndex + 1} · ${p.kind === 'stay' ? '住宿' : '吃饭'} · ${tag}${p.info ? ` · ${escapeHtml(p.info)}` : ''}</p>
+    ${p.address ? `<p>${escapeHtml(p.address)}</p>` : ''}
+    ${link}
+  </div>`;
+}
+
 function popupHtml(p: Place, img?: string) {
   return `<div class="pop">
     ${img ? `<img src="${escapeHtml(img)}" alt="" onerror="this.remove()" />` : ''}
@@ -100,6 +112,7 @@ export default function TripMap({
   const [failed, setFailed] = useState(0);
   const [retry, setRetry] = useState(0);
   const [modesUsed, setModesUsed] = useState<Mode[]>([]);
+  const [poisShown, setPoisShown] = useState({ stay: 0, dining: 0 });
   const [tilesFailed, setTilesFailed] = useState(false);
   const [hideHelp, setHideHelp] = useState(false);
   const lastBounds = useRef<L.LatLngBounds | null>(null);
@@ -229,6 +242,26 @@ export default function TripMap({
       });
     }
 
+    // 住宿和餐厅：已选 / 已订的实心标出，单看一天时候选也标出（浅色）
+    let poiCount = { stay: 0, dining: 0 };
+    for (const { d, i } of shown) {
+      for (const p of dayPois(d, focus !== null)) {
+        if (!poiLocated(p)) continue;
+        poiCount = { ...poiCount, [p.kind]: poiCount[p.kind] + 1 };
+        if (p.chosen) bounds.push([p.geo!.lat, p.geo!.lng]);
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="poi-pin ${p.kind}${p.chosen ? '' : ' cand'}${p.booked ? ' booked' : ''}" style="--day:${dayColor(i)}">${p.kind === 'stay' ? '🛏' : '🍴'}</div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        L.marker([p.geo!.lat, p.geo!.lng], { icon, title: p.name, zIndexOffset: p.chosen ? 200 : -100 })
+          .addTo(g)
+          .bindPopup(poiPopup(p, i), { maxWidth: 240 });
+      }
+    }
+    setPoisShown(poiCount);
+
     setModesUsed([...used]);
     lastBounds.current = bounds.length ? L.latLngBounds(bounds) : null;
     if (lastBounds.current) {
@@ -264,13 +297,17 @@ export default function TripMap({
           <button className="link" onClick={() => setRetry((n) => n + 1)}>重试</button>
         </div>
       )}
-      {modesUsed.length > 1 || (modesUsed.length === 1 && modesUsed[0] !== 'drive') ? (
+      {modesUsed.length > 1 || (modesUsed.length === 1 && modesUsed[0] !== 'drive') || poisShown.stay || poisShown.dining ? (
         <div className="map-legend">
-          {modesUsed.map((m) => (
-            <span key={m}>
-              <i className={`lg lg-${m}`} /> {MODES[m].icon} {MODES[m].label}
-            </span>
-          ))}
+          {(modesUsed.length > 1 || (modesUsed.length === 1 && modesUsed[0] !== 'drive')) &&
+            modesUsed.map((m) => (
+              <span key={m}>
+                <i className={`lg lg-${m}`} /> {MODES[m].icon} {MODES[m].label}
+              </span>
+            ))}
+          {poisShown.stay > 0 && <span>🛏 住宿</span>}
+          {poisShown.dining > 0 && <span>🍴 吃饭</span>}
+          {focus !== null && (poisShown.stay || poisShown.dining) ? <span className="muted">浅色 = 候选</span> : null}
         </div>
       ) : null}
     </div>
