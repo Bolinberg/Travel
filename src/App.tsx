@@ -18,7 +18,7 @@ import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, tra
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
-import { useFamilyShare, type ShareState } from './familyShare';
+import { loadBackups, restoreBackup, useFamilyShare, type ShareState } from './familyShare';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
 import { parseInvite } from './sync';
 import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
@@ -420,7 +420,7 @@ export default function App() {
           {tab === 'settings' && (
             <Settings trip={trip} update={update} onImport={addTrip}>
               {share.mode !== 'off' ? (
-                <FamilyShareCard state={share} />
+                <FamilyShareCard state={share} setStore={setStore} />
               ) : (
                 <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
               )}
@@ -2164,7 +2164,9 @@ function ShareBadge({ state, onClick }: { state: ShareState; onClick: () => void
   );
 }
 
-function FamilyShareCard({ state }: { state: ShareState }) {
+function FamilyShareCard({ state, setStore }: { state: ShareState; setStore: (f: (s: Store) => Store) => void }) {
+  const [restored, setRestored] = useState('');
+  const last = loadBackups()[0];
   return (
     <section className="card">
       <h2>和家人一起编辑</h2>
@@ -2175,7 +2177,7 @@ function FamilyShareCard({ state }: { state: ShareState }) {
         <p className="small warn-text">你现在只能查看。请页面的主人在分享设置里把你改成「Editor（编辑者）」或「Contributor（参与者）」。</p>
       )}
       {state.mode === 'waiting' && (
-        <p className="small warn-text">共享里还没有行程。请页面的主人（建这个行程的人）在 Claude 里打开一次这个页面，他设备上的行程会自动放上来。</p>
+        <p className="small warn-text">共享里还没有行程，而你只能查看。请有编辑权限的家人在 Claude 里打开一次这个页面，他设备上的行程会自动放上来。</p>
       )}
       {state.mode === 'error' && <p className="small warn-text">{state.message}</p>}
       {state.mode === 'connecting' && <p className="small muted">正在连接共享…</p>}
@@ -2184,6 +2186,23 @@ function FamilyShareCard({ state }: { state: ShareState }) {
         <li>输入家人的邮箱邀请，权限选 <b>Editor（编辑者）</b> 或 <b>Contributor（参与者）</b>；选 Viewer（查看者）的话只能看不能改。</li>
         <li>家人用自己的 Claude 账号打开同一个链接，就能一起加住宿、餐厅、清单、记账，改动会同步给所有人。</li>
       </ol>
+      <p className="small muted">
+        合并时只加不删：每台设备上加过的清单、记账、住宿、餐厅都会合进共享那份。本机内容被共享改动前会自动留一份备份。
+      </p>
+      {last && (
+        <p className="small">
+          <button
+            className="ghost"
+            onClick={() => {
+              const n = restoreBackup(setStore);
+              setRestored(n ? `已把 ${new Date(last.at).toLocaleString('zh-CN')} 的本机备份合并回来（只加不删）` : '没有可用的备份');
+            }}
+          >
+            从本机备份找回
+          </button>{' '}
+          <span className="muted">{restored || `最近备份：${new Date(last.at).toLocaleString('zh-CN')}`}</span>
+        </p>
+      )}
       <p className="muted small">网站版（bolinberg.github.io）每台设备各存一份，不会互相同步；要一起编辑请都用 Claude 里的这个页面。</p>
     </section>
   );
