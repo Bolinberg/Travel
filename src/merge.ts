@@ -62,6 +62,28 @@ export function mergeTrip(base: Trip, extra: Trip): Trip {
     return mergeDay(d, e);
   });
   for (const d of base.days) dayMap.set(d.id, d.id);
+  // 没对上的天（比如另一台设备选的是别的路线方案）：先按同一个目的地对，再按同一天（日期）记到备注里，不丢
+  const town = (x: string) => norm(x).split(/[,，]/)[0].replace(/\s+(sa|vic|nsw)$/, '');
+  extra.days.forEach((e, i) => {
+    if (dayMap.has(e.id)) return;
+    const j = out.days.findIndex((d) => town(d.to) === town(e.to));
+    if (j >= 0) {
+      dayMap.set(e.id, out.days[j].id);
+      out.days[j] = mergeDay(out.days[j], { ...e, stops: [] });
+      return;
+    }
+    const k = Math.min(i, out.days.length - 1);
+    if (k < 0) return;
+    const bits: string[] = [];
+    if (e.accommodation?.name) bits.push(`住 ${e.accommodation.name}${e.accommodation.cost ? ` $${e.accommodation.cost}` : ''}${e.accommodation.booked ? '（已订）' : ''}`);
+    for (const r of [...e.stayOptions, ...e.dining]) if (r.picked || r.booked) bits.push(`${r.name}${r.booked ? '（已订）' : ''}${r.url ? ` ${r.url}` : ''}`);
+    if (e.notes.trim()) bits.push(e.notes.trim());
+    if (bits.length) {
+      const line = `【另一台设备上这天（${e.from} → ${e.to}）】${bits.join('；')}`;
+      out.days[k] = { ...out.days[k], notes: addText(out.days[k].notes ?? '', line) };
+    }
+    dayMap.set(e.id, out.days[k].id);
+  });
 
   out.expenses = base.expenses.map((x) => ({ ...x }));
   for (const e of extra.expenses) {

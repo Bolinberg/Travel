@@ -91,21 +91,57 @@ export function loadBackups(): Backup[] {
     return [];
   }
 }
+/** 把一批行程合并进当前数据：同名的合并（只加不删），没有的作为新行程加入 */
+function mergeAll(s: Store, incoming: Trip[]): Store {
+  let trips = [...s.trips];
+  for (const inc of incoming) {
+    const i = trips.findIndex((t) => sameTrip(t, inc));
+    if (i >= 0) trips[i] = mergeTrip(trips[i], inc);
+    else trips = [...trips, inc];
+  }
+  return { ...s, trips };
+}
+
+const countOf = (trips: Trip[]) =>
+  trips.reduce(
+    (n, t) =>
+      n +
+      t.checklist.length +
+      t.expenses.length +
+      t.days.reduce((m, d) => m + d.stayOptions.length + d.dining.length + (d.accommodation?.name ? 1 : 0) + (d.notes ? 1 : 0), 0),
+    0,
+  );
+
+/** 合并进来，返回大约多了几条内容 */
+export function mergeIntoStore(store: Store, setStore: (f: (s: Store) => Store) => void, incoming: Trip[]): number {
+  const before = countOf(store.trips);
+  const after = countOf(mergeAll(store, incoming).trips);
+  setStore((s) => mergeAll(s, incoming));
+  return Math.max(0, after - before);
+}
+
 /** 把本机备份里的东西合并回当前行程（只加不删），返回合并了几个行程 */
 export function restoreBackup(setStore: (f: (s: Store) => Store) => void): number {
   const b = loadBackups()[0];
   if (!b) return 0;
-  setStore((s) => {
-    let trips = [...s.trips];
-    for (const old of b.trips) {
-      const i = trips.findIndex((t) => sameTrip(t, old));
-      if (i >= 0) trips[i] = mergeTrip(trips[i], old);
-      else trips = [...trips, old];
-    }
-    return { ...s, trips };
-  });
+  setStore((s) => mergeAll(s, b.trips));
   return b.trips.length;
 }
+
+const EXPORT_TAG = 'travel-planner-family-export';
+/** 网站版：把这台设备上的全部行程打包成一段文字，好贴到 Claude 里的共享页面 */
+export function exportText(store: Store): string {
+  return JSON.stringify({ [EXPORT_TAG]: 1, at: new Date().toISOString(), trips: store.trips.map((t) => bodyOf(t)) });
+}
+/** 认出网站版复制来的文字或导出的文件（单个行程也行） */
+export function parseExport(text: string, migrate: (x: unknown) => Trip | null): Trip[] {
+  const start = text.indexOf('{');
+  if (start < 0) return [];
+  const raw = JSON.parse(text.slice(start, text.lastIndexOf('}') + 1)) as Record<string, unknown>;
+  const list = Array.isArray(raw.trips) ? (raw.trips as unknown[]) : [raw];
+  return list.map((x) => migrate(x)).filter((t): t is Trip => !!t);
+}
+
 const bodyOf = (t: Trip) => {
   const { versions: _v, ...rest } = t;
   return rest;

@@ -18,7 +18,7 @@ import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, tra
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
-import { loadBackups, restoreBackup, useFamilyShare, type ShareState } from './familyShare';
+import { exportText, loadBackups, mergeIntoStore, parseExport, restoreBackup, useFamilyShare, type ShareState } from './familyShare';
 import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
 import { parseInvite } from './sync';
 import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
@@ -104,6 +104,10 @@ export default function App() {
   const sync = useSync(store, setStore);
   // 在 Claude 里打开时：全家共用同一份行程
   const share = useFamilyShare(store, setStore);
+  const [carryHidden, setCarryHidden] = useState(() => sessionStorage.getItem('travel-planner.carry-hidden') === '1');
+  useEffect(() => {
+    if (carryHidden) sessionStorage.setItem('travel-planner.carry-hidden', '1');
+  }, [carryHidden]);
   // 打开邀请链接（#join=…）时提示加入
   const [invite, setInvite] = useState(() => (typeof location !== 'undefined' ? parseInvite(location.hash) : null));
   const closeInvite = () => {
@@ -279,6 +283,13 @@ export default function App() {
           </button>
         </div>
       </header>
+      {share.mode === 'off' && !carryHidden && (
+        <section className="carry-bar" aria-label="网站版提醒">
+          <span>网站版只存在这台设备上，家人看不到你改的内容。</span>
+          <button className="primary" onClick={() => goTo('settings')}>带到家人共享</button>
+          <button className="link" onClick={() => setCarryHidden(true)}>以后再说</button>
+        </section>
+      )}
       {kiOffer && !hasKiTrip(store) && (
         <section className="offer" aria-label="新方案">
           <div>
@@ -420,9 +431,12 @@ export default function App() {
           {tab === 'settings' && (
             <Settings trip={trip} update={update} onImport={addTrip}>
               {share.mode !== 'off' ? (
-                <FamilyShareCard state={share} setStore={setStore} />
+                <FamilyShareCard state={share} store={store} setStore={setStore} />
               ) : (
+                <>
+                <CarryCard store={store} />
                 <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
+                </>
               )}
             </Settings>
           )}
@@ -2164,8 +2178,68 @@ function ShareBadge({ state, onClick }: { state: ShareState; onClick: () => void
   );
 }
 
-function FamilyShareCard({ state, setStore }: { state: ShareState; setStore: (f: (s: Store) => Store) => void }) {
+const SHARED_PAGE = 'https://claude.ai/artifact/DA5qqi2wivamYCTcVgAanm';
+
+/** 网站版：把这台设备上改的内容一键复制，带到 Claude 里的共享页面 */
+function CarryCard({ store }: { store: Store }) {
+  const [msg, setMsg] = useState('');
+  const [text, setText] = useState('');
+  const copy = async () => {
+    const t = exportText(store);
+    try {
+      await navigator.clipboard.writeText(t);
+      setMsg('已复制。现在打开 Claude 里的共享页面，在「设置 → 和家人一起编辑」里粘贴就行。');
+      setText('');
+    } catch {
+      setText(t);
+      setMsg('浏览器不让自动复制：请长按下面的框，全选后复制。');
+    }
+  };
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([exportText(store)], { type: 'application/json' }));
+    a.download = `行程-带到家人共享-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  };
+  return (
+    <section className="card carry-card">
+      <h2>带到家人共享</h2>
+      <p className="small">
+        这个网站版的修改只存在这台设备上。要让家人看到、一起改，请把内容带到 Claude 里的共享页面。合并时<b>只加不删</b>，不会弄丢任何人的东西。
+      </p>
+      <ol className="small share-steps">
+        <li>
+          点 <button className="primary" onClick={copy}>复制我改的全部内容</button>
+        </li>
+        <li>
+          打开共享页面：<a href={SHARED_PAGE} target="_blank" rel="noreferrer">{SHARED_PAGE.replace('https://', '')}</a>（用自己的 Claude 账号；打不开的话请主人在 Share 里邀请你）
+        </li>
+        <li>在那边「设置 → 和家人一起编辑」的框里粘贴。</li>
+      </ol>
+      {msg && <p className="small sp-added">{msg}</p>}
+      {text && <textarea className="carry-text" readOnly value={text} rows={4} onFocus={(e) => e.target.select()} aria-label="要复制的内容" />}
+      <p className="small muted">
+        复制不了的话也可以 <button className="link" onClick={download}>下载成文件</button>，发给主人，在共享页面里选「选文件合并」。
+      </p>
+    </section>
+  );
+}
+
+function FamilyShareCard({ state, store, setStore }: { state: ShareState; store: Store; setStore: (f: (s: Store) => Store) => void }) {
   const [restored, setRestored] = useState('');
+  const [mergeMsg, setMergeMsg] = useState('');
+  const mergeFileRef = useRef<HTMLInputElement>(null);
+  const mergeText = (text: string) => {
+    if (!text.trim()) return;
+    try {
+      const trips = parseExport(text, migrateTrip);
+      if (!trips.length) throw new Error('空');
+      const n = mergeIntoStore(store, setStore, trips);
+      setMergeMsg(n ? `合并好了：多了 ${n} 条内容（清单、记账、住宿、餐厅等），会同步给家人。` : '合并好了：里面的内容这边都已经有了。');
+    } catch {
+      setMergeMsg('没认出来：请粘贴网站版「复制我改的全部内容」复制出来的那一整段。');
+    }
+  };
   const last = loadBackups()[0];
   return (
     <section className="card">
@@ -2189,6 +2263,38 @@ function FamilyShareCard({ state, setStore }: { state: ShareState; setStore: (f:
       <p className="small muted">
         合并时只加不删：每台设备上加过的清单、记账、住宿、餐厅都会合进共享那份。本机内容被共享改动前会自动留一份备份。
       </p>
+      {state.mode === 'live' && state.canWrite && (
+        <div className="carry-in">
+          <h3>把网站版改的内容合并进来</h3>
+          <p className="small muted">在网站版（bolinberg.github.io）的设置里点「复制我改的全部内容」，再粘贴到这里。只加不删。</p>
+          <textarea
+            rows={3}
+            placeholder="粘贴网站版复制的内容"
+            aria-label="粘贴网站版内容"
+            onPaste={(e) => {
+              e.preventDefault();
+              mergeText(e.clipboardData.getData('text'));
+            }}
+            onChange={(e) => mergeText(e.target.value)}
+            value=""
+          />
+          <p className="small">
+            <button className="ghost" onClick={() => mergeFileRef.current?.click()}>选文件合并</button>{' '}
+            {mergeMsg && <span className="sp-added">{mergeMsg}</span>}
+          </p>
+          <input
+            ref={mergeFileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) mergeText(await f.text());
+              e.target.value = '';
+            }}
+          />
+        </div>
+      )}
       {last && (
         <p className="small">
           <button

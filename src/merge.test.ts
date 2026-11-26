@@ -28,6 +28,15 @@ describe('家人共享：合并只加不删', () => {
     expect(m.days[2].dining.find((r) => r.name === 'Pizzateca')!.booked).toBe(true);
     expect(m.days.length).toBe(a.days.length);
   });
+  it('另一台设备用的是别的路线：同目的地就合进去，否则写进同一天的备注，不丢', () => {
+    const b = createRouteComparisonTrip();
+    b.days[0] = { ...b.days[0], id: 'x0', from: 'Point Cook VIC', to: 'Nowhere Town VIC', accommodation: { name: 'Sunny Cabin', cost: 210, booked: true, paid: false, notes: '' } };
+    b.days[1] = { ...b.days[1], id: 'x1', from: 'Elsewhere', to: a.days[3].to, dining: [{ id: 'd9', name: 'Fish Shack', where: '', type: '', price: '', note: '', picked: true, booked: true }] };
+    const m = mergeTrip(a, b);
+    expect(m.days[0].notes).toContain('Sunny Cabin');
+    expect(m.days[0].notes).toContain('已订');
+    expect(m.days[3].dining.some((r) => r.name === 'Fish Shack')).toBe(true);
+  });
   it('什么都不删：base 里有的都还在', () => {
     const b = clone(a);
     b.checklist = [];

@@ -3493,3 +3493,11 @@ ul.plain.sp-more > li {
   display: grid;
   gap: 4px;
 }
+
+/* 网站版：提醒把内容带到家人共享 */
+.carry-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 16px 0; padding: 10px 12px; border-radius: 10px; background: var(--amber-soft); color: var(--amber-ink); font-size: 14px; }
+.carry-bar span { flex: 1 1 220px; }
+.carry-text { width: 100%; font-family: ui-monospace, monospace; font-size: 12px; }
+.carry-in { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line, #e5e5e5); }
+.carry-in h3 { font-size: 15px; margin: 0 0 4px; }
+.carry-in textarea { width: 100%; }
