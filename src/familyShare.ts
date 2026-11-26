@@ -73,7 +73,7 @@ interface Backup {
   trips: Trip[];
 }
 /** 本机数据被共享内容改动之前，留一份备份（最近 3 份，不含历史版本） */
-function backup(trips: Trip[]) {
+export function backup(trips: Trip[]) {
   try {
     const list = loadBackups();
     const slim = trips.map((t) => ({ ...bodyOf(t) }) as Trip);

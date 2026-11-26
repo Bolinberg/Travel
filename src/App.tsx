@@ -18,8 +18,9 @@ import { MORE_TICKET_PLATFORMS, MORE_TRANSPORT_PLATFORMS, ticketSearchLinks, tra
 import { findDuplicate, isDuplicate, parseChecklistText, type ParsedItem } from './checklistParse';
 import Versions from './Versions';
 import { useSync } from './useSync';
+import { checkGh, ghInviteLink, useGitHubSync, type GhConfig, type GhState } from './githubSync';
 import { exportText, loadBackups, mergeIntoStore, parseExport, restoreBackup, useFamilyShare, type ShareState } from './familyShare';
-import { JoinPrompt, SyncBadge, SyncCard } from './SyncUI';
+import { JoinPrompt, SyncBadge } from './SyncUI';
 import { parseInvite } from './sync';
 import { addVersion, currentPlanId, planOptions, restoreVersion, saveAsPlan, snapshot, switchPlan } from './versions';
 import { findPlace, geocode, geocodeAll, links, missingPlaces, useWiki } from './geo';
@@ -102,6 +103,7 @@ export default function App() {
   const [showTrips, setShowTrips] = useState(false);
   const [kiOffer, setKiOffer] = useState(() => !offerDismissed());
   const sync = useSync(store, setStore);
+  const ghSync = useGitHubSync(store, setStore);
   // 在 Claude 里打开时：全家共用同一份行程
   const share = useFamilyShare(store, setStore);
   const [carryHidden, setCarryHidden] = useState(() => sessionStorage.getItem('travel-planner.carry-hidden') === '1');
@@ -277,16 +279,17 @@ export default function App() {
         </div>
         <div className="masthead-actions">
           <ShareBadge state={share} onClick={() => goTo('settings')} />
-          {share.mode === 'off' && <SyncBadge state={sync.state} onClick={() => goTo('settings')} />}
+          {share.mode === 'off' && ghSync.cfg && <GhBadge state={ghSync.state} onClick={() => goTo('settings')} />}
+          {share.mode === 'off' && !ghSync.cfg && sync.cfg && <SyncBadge state={sync.state} onClick={() => goTo('settings')} />}
           <button className={`icon-btn${tab === 'settings' ? ' on' : ''}`} aria-label="设置" title="设置" onClick={() => goTo('settings')}>
             <Icon name="settings" />
           </button>
         </div>
       </header>
-      {share.mode === 'off' && !carryHidden && (
+      {share.mode === 'off' && !ghSync.cfg && !carryHidden && (
         <section className="carry-bar" aria-label="网站版提醒">
-          <span>网站版只存在这台设备上，家人看不到你改的内容。</span>
-          <button className="primary" onClick={() => goTo('settings')}>带到家人共享</button>
+          <span>还没开同步：现在改的只存在这台设备上，家人看不到。</span>
+          <button className="primary" onClick={() => goTo('settings')}>开启家人同步</button>
           <button className="link" onClick={() => setCarryHidden(true)}>以后再说</button>
         </section>
       )}
@@ -433,10 +436,7 @@ export default function App() {
               {share.mode !== 'off' ? (
                 <FamilyShareCard state={share} store={store} setStore={setStore} />
               ) : (
-                <>
-                <CarryCard store={store} />
-                <SyncCard cfg={sync.cfg} state={sync.state} setCfg={sync.setCfg} run={sync.run} store={store} />
-                </>
+                <GhSyncCard gh={ghSync} store={store} setStore={setStore} />
               )}
             </Settings>
           )}
@@ -2178,48 +2178,196 @@ function ShareBadge({ state, onClick }: { state: ShareState; onClick: () => void
   );
 }
 
-const SHARED_PAGE = 'https://claude.ai/artifact/DA5qqi2wivamYCTcVgAanm';
 
-/** 网站版：把这台设备上改的内容一键复制，带到 Claude 里的共享页面 */
-function CarryCard({ store }: { store: Store }) {
+function GhBadge({ state, onClick }: { state: GhState; onClick: () => void }) {
+  const [cls, text] =
+    state.mode === 'ok' ? ['ok', '家人同步'] : state.mode === 'syncing' ? ['busy', '同步中…'] : state.mode === 'error' ? ['err', '未同步'] : ['ro', '未开同步'];
+  return (
+    <button className={`share-badge ${cls}`} onClick={onClick} title={state.mode === 'error' ? state.message : '全家共用同一份行程'}>
+      <span className="dot" aria-hidden="true" />
+      {text}
+    </button>
+  );
+}
+
+const TOKEN_URL =
+  'https://github.com/settings/personal-access-tokens/new?name=' +
+  encodeURIComponent('家庭行程同步') +
+  '&description=' +
+  encodeURIComponent('只用于 travel-data 仓库') +
+  '&target_name=Bolinberg&contents=write';
+
+/** 把别处（Claude 页面 / 另一台设备）复制来的内容合并进来，只加不删 */
+function MergePasteBox({ store, setStore, hint }: { store: Store; setStore: (f: (s: Store) => Store) => void; hint: string }) {
   const [msg, setMsg] = useState('');
-  const [text, setText] = useState('');
-  const copy = async () => {
-    const t = exportText(store);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const mergeText = (text: string) => {
+    if (!text.trim()) return;
     try {
-      await navigator.clipboard.writeText(t);
-      setMsg('已复制。现在打开 Claude 里的共享页面，在「设置 → 和家人一起编辑」里粘贴就行。');
-      setText('');
+      const trips = parseExport(text, migrateTrip);
+      if (!trips.length) throw new Error('空');
+      const n = mergeIntoStore(store, setStore, trips);
+      setMsg(n ? `合并好了：多了 ${n} 条内容，会同步给家人。` : '合并好了：里面的内容这边都已经有了。');
     } catch {
-      setText(t);
-      setMsg('浏览器不让自动复制：请长按下面的框，全选后复制。');
+      setMsg('没认出来：请粘贴「复制全部内容」复制出来的那一整段。');
     }
   };
-  const download = () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([exportText(store)], { type: 'application/json' }));
-    a.download = `行程-带到家人共享-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-  };
   return (
-    <section className="card carry-card">
-      <h2>带到家人共享</h2>
+    <div className="carry-in">
+      <h3>合并别处的内容</h3>
+      <p className="small muted">{hint}</p>
+      <textarea
+        rows={2}
+        placeholder="粘贴复制来的内容"
+        aria-label="粘贴别处内容"
+        onPaste={(e) => {
+          e.preventDefault();
+          mergeText(e.clipboardData.getData('text'));
+        }}
+        onChange={(e) => mergeText(e.target.value)}
+        value=""
+      />
       <p className="small">
-        这个网站版的修改只存在这台设备上。要让家人看到、一起改，请把内容带到 Claude 里的共享页面。合并时<b>只加不删</b>，不会弄丢任何人的东西。
+        <button className="ghost" onClick={() => fileRef.current?.click()}>选文件合并</button> {msg && <span className="sp-added">{msg}</span>}
       </p>
-      <ol className="small share-steps">
-        <li>
-          点 <button className="primary" onClick={copy}>复制我改的全部内容</button>
-        </li>
-        <li>
-          打开共享页面：<a href={SHARED_PAGE} target="_blank" rel="noreferrer">{SHARED_PAGE.replace('https://', '')}</a>（用自己的 Claude 账号；打不开的话请主人在 Share 里邀请你）
-        </li>
-        <li>在那边「设置 → 和家人一起编辑」的框里粘贴。</li>
-      </ol>
-      {msg && <p className="small sp-added">{msg}</p>}
-      {text && <textarea className="carry-text" readOnly value={text} rows={4} onFocus={(e) => e.target.select()} aria-label="要复制的内容" />}
-      <p className="small muted">
-        复制不了的话也可以 <button className="link" onClick={download}>下载成文件</button>，发给主人，在共享页面里选「选文件合并」。
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (f) mergeText(await f.text());
+          e.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+function CopyAllButton({ store, label = '复制全部内容' }: { store: Store; label?: string }) {
+  const [msg, setMsg] = useState('');
+  const [text, setText] = useState('');
+  return (
+    <>
+      <button
+        onClick={async () => {
+          const t = exportText(store);
+          try {
+            await navigator.clipboard.writeText(t);
+            setMsg('已复制');
+            setText('');
+          } catch {
+            setText(t);
+            setMsg('请长按下面的框全选复制');
+          }
+        }}
+      >
+        {label}
+      </button>{' '}
+      {msg && <span className="small sp-added">{msg}</span>}
+      {text && <textarea className="carry-text" readOnly value={text} rows={3} onFocus={(e) => e.target.select()} aria-label="要复制的内容" />}
+    </>
+  );
+}
+
+function GhSyncCard({
+  gh,
+  store,
+  setStore,
+}: {
+  gh: { cfg: GhConfig | null; state: GhState; setCfg: (c: GhConfig | null) => void; run: () => Promise<void> | undefined };
+  store: Store;
+  setStore: (f: (s: Store) => Store) => void;
+}) {
+  const [token, setToken] = useState('');
+  const [repo, setRepo] = useState('Bolinberg/travel-data');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState('');
+  const connect = async () => {
+    const [owner, name] = repo.trim().split('/');
+    const c = { owner: owner ?? '', repo: name ?? '', token: token.trim() };
+    if (!c.owner || !c.repo || !c.token) return setErr('请填好仓库和令牌');
+    setBusy(true);
+    setErr('');
+    try {
+      await checkGh(c);
+      gh.setCfg(c);
+      setToken('');
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '连不上');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const link = gh.cfg ? ghInviteLink(location.href, gh.cfg) : '';
+  return (
+    <section className="card">
+      <h2>和家人一起编辑（同步）</h2>
+      {!gh.cfg ? (
+        <>
+          <p className="small">
+            行程存进你的 GitHub 私有仓库 <b>{repo}</b>，全家打开这个网址看到、编辑的都是同一份。合并时<b>只加不删</b>，每台设备上已经加过的东西都会合进去。
+          </p>
+          <ol className="small share-steps">
+            <li>
+              主人（仓库的主人）在电脑上打开{' '}
+              <a href={TOKEN_URL} target="_blank" rel="noreferrer">GitHub 新建令牌</a>：
+              <br />Expiration 选到旅行结束以后（如 2027 年 1 月）；Repository access 选 <b>Only select repositories → travel-data</b>；Permissions → Repository permissions 里把 <b>Contents</b> 设为 <b>Read and write</b>；点 Generate token，复制。
+            </li>
+            <li>把令牌粘贴到下面，点「连接」。</li>
+            <li>连上后，这里会出现<b>家人邀请链接</b>，发给家人，她在自己的手机上打开就自动加入。</li>
+          </ol>
+          <div className="row wrap">
+            <input value={repo} onChange={(e) => setRepo(e.target.value)} aria-label="仓库" style={{ flex: '1 1 160px' }} />
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="粘贴令牌 github_pat_…"
+              aria-label="GitHub 令牌"
+              type="password"
+              autoComplete="off"
+              style={{ flex: '2 1 220px' }}
+            />
+            <button className="primary" disabled={busy} onClick={connect}>{busy ? '连接中…' : '连接'}</button>
+          </div>
+          {err && <p className="small warn-text">{err}</p>}
+          <p className="small muted">家人那边不用做这一步：直接打开主人发来的邀请链接就行。</p>
+        </>
+      ) : (
+        <>
+          {gh.state.mode === 'ok' && <p className="small sp-added">已同步（{new Date(gh.state.at).toLocaleTimeString('zh-CN')}）。改动约 2 秒后上传，其他设备 20 秒内看到。</p>}
+          {gh.state.mode === 'syncing' && <p className="small muted">正在同步…</p>}
+          {gh.state.mode === 'error' && <p className="small warn-text">{gh.state.message}</p>}
+          <div className="row wrap">
+            <button onClick={() => gh.run()}>立即同步</button>
+            <button
+              className="primary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(link);
+                  setCopied('已复制邀请链接，发给家人');
+                } catch {
+                  setCopied(link);
+                }
+              }}
+            >
+              复制家人邀请链接
+            </button>
+          </div>
+          {copied && <p className="small sp-added" style={{ wordBreak: 'break-all' }}>{copied}</p>}
+          <p className="small muted">
+            邀请链接里带着令牌：拿到链接的人都能改这份行程，<b>只发给家人</b>。发错了就去 GitHub 删掉这个令牌，再生成一个新的。
+          </p>
+          <p className="small">
+            <button className="link" onClick={() => confirm('断开同步？本机数据会保留，只是不再和家人同步。') && gh.setCfg(null)}>断开同步</button>
+          </p>
+        </>
+      )}
+      <MergePasteBox store={store} setStore={setStore} hint="Claude 里的页面或另一台没连同步的设备上改过东西：在那边点「复制全部内容」，粘贴到这里。" />
+      <p className="small">
+        <CopyAllButton store={store} label="复制这台设备的全部内容" />
       </p>
     </section>
   );
@@ -2295,6 +2443,9 @@ function FamilyShareCard({ state, store, setStore }: { state: ShareState; store:
           />
         </div>
       )}
+      <p className="small">
+        要带到网站版（bolinberg.github.io）：<CopyAllButton store={store} />，再到网站版「设置 → 和家人一起编辑」里粘贴。
+      </p>
       {last && (
         <p className="small">
           <button
@@ -2309,7 +2460,7 @@ function FamilyShareCard({ state, store, setStore }: { state: ShareState; store:
           <span className="muted">{restored || `最近备份：${new Date(last.at).toLocaleString('zh-CN')}`}</span>
         </p>
       )}
-      <p className="muted small">网站版（bolinberg.github.io）每台设备各存一份，不会互相同步；要一起编辑请都用 Claude 里的这个页面。</p>
+      <p className="muted small">网站版（bolinberg.github.io）用 GitHub 私有仓库同步，和这个 Claude 页面是分开的两份；要互相搬内容，用上面的「复制全部内容」再到另一边粘贴。</p>
     </section>
   );
 }
