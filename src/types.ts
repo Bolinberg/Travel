@@ -155,6 +155,8 @@ export interface Trip {
   versions?: TripVersion[];
   /** 当前内容来自哪个备选方案（行程页上的方案切换用） */
   activePlan?: string;
+  /** 已经自动加过的方案（加过一次就不再加，删掉了也不会回来） */
+  offered?: string[];
 }
 
 /** 行程的一个历史版本或备选方案（不含 versions 本身） */

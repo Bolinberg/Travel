@@ -108,14 +108,14 @@ describe('9-day plan: 2 nights on Kangaroo Island, home via the Grampians', () =
   });
 });
 
-import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_C, COMPARE_D, TRIP_START } from './templateKI';
+import { createRouteComparisonTrip, COMPARE_A, COMPARE_B, COMPARE_C, COMPARE_D, COMPARE_E, TRIP_START } from './templateKI';
 import { versionTrip } from './versions';
 
 describe('route comparison A vs B from Point Cook', () => {
   const t = createRouteComparisonTrip();
   const [va, vb] = t.versions!.slice().reverse();
   it('holds both routes as proposals', () => {
-    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A, COMPARE_C, COMPARE_D]);
+    expect(t.versions!.map((v) => v.label)).toEqual([COMPARE_B, COMPARE_A, COMPARE_C, COMPARE_D, COMPARE_E]);
     const a = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_A)!);
     const b = versionTrip(t, t.versions!.find((v) => v.label === COMPARE_B)!);
     expect(a.days).toHaveLength(7);

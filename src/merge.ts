@@ -112,6 +112,7 @@ export function mergeTrip(base: Trip, extra: Trip): Trip {
     out.checklist.push({ ...c } as ChecklistItem);
   }
 
+  if (extra.offered?.length) out.offered = [...new Set([...(base.offered ?? []), ...extra.offered])];
   out.places = [...(base.places ?? [])];
   for (const p of extra.places ?? []) if (!out.places.some((x) => x.name === p.name)) out.places.push(p);
 

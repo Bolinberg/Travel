@@ -511,6 +511,7 @@ export const COMPARE_A = 'A：直达蓝湖、袋鼠岛 1 晚（7 天）';
 export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
 export const COMPARE_C = 'C：住 Apollo Bay、蓝湖（9 天）';
 export const COMPARE_D = 'D：按需求定制 · 格兰扁 2 晚（9 天）';
+export const COMPARE_E = 'E：在 D 基础上不去袋鼠岛 · 阿德莱德直接开回家（4 天）';
 /** 家里定下的日期：12/12（六）出发，12/20（日）回家 */
 export const TRIP_START = '2026-12-12';
 
@@ -691,7 +692,7 @@ export function createRouteComparisonTrip(): Trip {
   const out = addAlerts(switchPlan(applyVerifiedStays(b), vd.id));
   out.startDate = TRIP_START;
   for (const v of out.versions ?? []) v.snapshot.startDate = TRIP_START;
-  return out;
+  return addPlanE(out);
 }
 
 /**
@@ -699,7 +700,56 @@ export function createRouteComparisonTrip(): Trip {
  * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
  */
 export function upgradeComparison(trip: Trip): Trip {
-  return addAlerts(reviseDOnDevice(addPlanD(addPlanC(upgradeA(trip)))));
+  return addPlanE(addAlerts(reviseDOnDevice(addPlanD(addPlanC(upgradeA(trip))))));
+}
+
+const KI_STOP = /Vivonne Bay|Kangaroo Island|Penneshaw|Kingscote|Seal Bay|Little Sahara|Remarkable Rocks|Admirals Arch|Flinders Chase/i;
+const KI_EXPENSE = /袋鼠岛|SeaLink|渡轮|海狮湾|滑沙|弗林德斯|Flinders|Kangaroo Island/i;
+
+/**
+ * 方案 E：以 D 现在的内容为底（正在用 D 就用当前内容，含已选的住宿、餐厅、记账），
+ * 去掉袋鼠岛那几天，看完阿德莱德后一天直接开回 Point Cook，中途不过夜。
+ * 只新增方案，不切换，也不改 D。
+ */
+export function buildPlanE(d: Omit<Trip, 'versions'>): Omit<Trip, 'versions'> | null {
+  const t = structuredClone(d);
+  const kiStart = t.days.findIndex((x) => KI_STOP.test(x.to) || x.stops.some((s) => KI_STOP.test(s)));
+  if (kiStart < 1) return null;
+  const kept = t.days.slice(0, kiStart);
+  const last = kept[kept.length - 1];
+  const home = t.days[t.days.length - 1]?.to || 'Point Cook VIC';
+  const removed = new Set(t.days.slice(kiStart).map((x) => x.id));
+  const back: Day = {
+    id: newId(),
+    title: '阿德莱德 → 直接开回 Point Cook（中途不过夜）',
+    from: last.to,
+    to: home,
+    km: 725,
+    driveHours: 7.9,
+    stops: [],
+    accommodation: null,
+    stayOptions: [],
+    dining: [],
+    notes:
+      '回程一天开完：走 M1 South Eastern Fwy → Dukes Hwy（Tailem Bend、Bordertown）→ Western Hwy（Horsham、Ballarat）回家，约 725 km、纯开车约 7.9 小时，加上休息一般 9–10 小时。建议早上 7 点前出发；每 2 小时停一次（Tailem Bend、Bordertown、Horsham、Ballarat 都有加油站和快餐）。过州界时间快 30 分钟（维州比南澳快半小时），到家会比手表上晚。',
+    routeKey: 'estimate', // 先按经验估，联网后自动按真实道路重算
+  };
+  t.days = [...kept, back];
+  t.expenses = t.expenses.filter((e) => !(e.dayId && removed.has(e.dayId)) && !(e.dayId === null && KI_EXPENSE.test(e.title)));
+  return t;
+}
+
+export function addPlanE(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME || trip.offered?.includes('E') || trip.versions?.some((v) => v.label === COMPARE_E)) return trip;
+  const dv = trip.versions?.find((v) => v.label === COMPARE_D && v.id === trip.activePlan) ?? trip.versions?.find((v) => v.label === COMPARE_D);
+  if (!dv) return trip;
+  const base = trip.activePlan === dv.id ? snapshot(trip) : dv.snapshot;
+  const e = buildPlanE(base);
+  if (!e) return trip;
+  const t = structuredClone(trip);
+  addVersion(t, COMPARE_E, 'proposal', e);
+  t.offered = [...(t.offered ?? []), 'E'];
+  return t;
 }
 
 /** 2026 年 11 月核实到的景点变化：加进准备清单（每条只加一次） */

@@ -8,7 +8,7 @@ import { AI_MODELS, applyResult, generateDayRecs, loadAiSettings, saveAiSettings
 import TripMap, { dayColor, dayPlaces } from './TripMap';
 import Replan from './Replan';
 import { AskBar, PlansPage } from './Planner';
-import { COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
+import { addPlanE, COMPARE_NAME, createRouteComparisonTrip, upgradeComparison } from './templateKI';
 import { applyVerifiedStays, applyVerifiedStaysToDay } from './stays';
 import Bookings, { isBookable, pickStay, stayGroups, stayLabel, stayLink } from './Bookings';
 import { childAges, daysUntil, Field, hoursClass, leg, NumInput, short, shortTitle } from './ui';
@@ -178,6 +178,12 @@ export default function App() {
         if (latest && routeKey(latest) === routeKey(d)) await autoRouteDay(tripRef.current, latest, update).catch(() => null);
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip]);
+
+  // 同步来的行程也补上新方案（只加一次）
+  useEffect(() => {
+    if (addPlanE(trip) !== trip) update((t) => Object.assign(t, addPlanE(t)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip]);
 

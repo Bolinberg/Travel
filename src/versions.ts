@@ -48,8 +48,15 @@ export const KIND_LABEL: Record<TripVersion['kind'], string> = {
 
 /** 行程里可以直接切换的备选方案（最多 4 个，按添加顺序） */
 export function planOptions(trip: Trip): TripVersion[] {
-  return (trip.versions ?? [])
-    .filter((v) => v.kind === 'proposal')
+  const all = (trip.versions ?? []).filter((v) => v.kind === 'proposal');
+  // 两台设备各自加了同名方案：只显示一个（正在用的优先，否则最新的）
+  const byLabel = new Map<string, TripVersion>();
+  for (const v of all) {
+    const cur = byLabel.get(v.label);
+    if (!cur || v.id === trip.activePlan || (cur.id !== trip.activePlan && v.createdAt > cur.createdAt)) byLabel.set(v.label, v);
+  }
+  return all
+    .filter((v) => byLabel.get(v.label) === v)
     .slice(-6) // 最多同时比较 6 个方案
     .sort((a, b) => a.label.localeCompare(b.label, 'zh'));
 }
