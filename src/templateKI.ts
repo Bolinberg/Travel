@@ -512,6 +512,7 @@ export const COMPARE_B = 'B：住 Port Campbell、Robe（9 天）';
 export const COMPARE_C = 'C：住 Apollo Bay、蓝湖（9 天）';
 export const COMPARE_D = 'D：按需求定制 · 格兰扁 2 晚（9 天）';
 export const COMPARE_E = 'E：在 D 基础上不去袋鼠岛 · 阿德莱德直接开回家（4 天）';
+export const COMPARE_F = 'F：在 E 基础上阿德莱德多住 2 晚（6 天）';
 /** 家里定下的日期：12/12（六）出发，12/20（日）回家 */
 export const TRIP_START = '2026-12-12';
 
@@ -692,7 +693,7 @@ export function createRouteComparisonTrip(): Trip {
   const out = addAlerts(switchPlan(applyVerifiedStays(b), vd.id));
   out.startDate = TRIP_START;
   for (const v of out.versions ?? []) v.snapshot.startDate = TRIP_START;
-  return addPlanE(out);
+  return addPlanF(addPlanE(out));
 }
 
 /**
@@ -700,7 +701,7 @@ export function createRouteComparisonTrip(): Trip {
  * 正在看旧 A 时，当前内容会先存回旧 A，再换成新 A。
  */
 export function upgradeComparison(trip: Trip): Trip {
-  return addPlanE(addAlerts(reviseDOnDevice(addPlanD(addPlanC(upgradeA(trip))))));
+  return addPlanF(addPlanE(addAlerts(reviseDOnDevice(addPlanD(addPlanC(upgradeA(trip)))))));
 }
 
 const KI_STOP = /Vivonne Bay|Kangaroo Island|Penneshaw|Kingscote|Seal Bay|Little Sahara|Remarkable Rocks|Admirals Arch|Flinders Chase/i;
@@ -891,5 +892,89 @@ function upgradeA(trip: Trip): Trip {
   if (wasActive) {
     return { ...structuredClone(newA.snapshot), id: t.id, name: t.name, versions: t.versions, activePlan: newA.id };
   }
+  return t;
+}
+
+const F_PLACES: Place[] = [
+  { name: 'Mount Lofty Summit SA', label: 'Mount Lofty 山顶观景台', lat: -34.9776, lng: 138.7088, wiki: 'Mount Lofty', desc: '阿德莱德最高点，俯瞰整个城市和海湾；山顶有咖啡馆，停车收费。' },
+];
+
+/**
+ * 方案 F：在 E 的基础上，阿德莱德多住两晚（看完动物园后加海边一天、袋鼠考拉一天），再一天开回家。
+ * 用 E 现在的内容为底（E 被删了就从 D 重新生成），只新增方案，不切换。
+ */
+export function buildPlanF(e: Omit<Trip, 'versions'>): Omit<Trip, 'versions'> | null {
+  const t = structuredClone(e);
+  const back = t.days[t.days.length - 1];
+  const city = t.days[t.days.length - 2];
+  if (!back || !city || !/Adelaide/i.test(city.to) || !/Adelaide/i.test(back.from)) return null;
+  const stay = city.accommodation;
+  const moreNights = (): Day['accommodation'] =>
+    stay
+      ? { name: stay.name, cost: stay.cost, booked: false, paid: false, notes: stay.booked ? '和前两晚同一家：记得把预订改成连住 4 晚' : '和前两晚同一家，连住 4 晚' }
+      : null;
+  const day = (title: string, stops: string[], km: number, hours: number, notes: string, mode?: Day['mode']): Day => ({
+    id: newId(),
+    title,
+    from: city.to,
+    to: city.to,
+    km,
+    driveHours: hours,
+    stops,
+    ...(mode ? { mode } : {}),
+    accommodation: moreNights(),
+    stayOptions: structuredClone(city.stayOptions ?? []),
+    dining: [],
+    notes,
+    routeKey: 'estimate',
+  });
+  const beach = day(
+    '阿德莱德：坐电车去 Glenelg 海边玩一天',
+    ['Glenelg SA'],
+    22,
+    1,
+    '不开车：市中心 King William St 坐电车到 Glenelg（约 30 分钟，市区段免费）。上午海滩玩水、走 Jetty 栈桥；海边的 The Beachouse 有水滑梯、碰碰车等（夏季营业，时间票价以官网为准）。下午可以坐从 Glenelg 出发的海豚观赏船（约 1.5–2 小时，旺季要提前订）。傍晚在 Jetty Road 吃饭，看海上日落再坐电车回去。',
+    'transit',
+  );
+  const animals = day(
+    'Cleland 喂袋鼠抱考拉 + Mount Lofty 山顶',
+    ['Cleland Wildlife Park SA', 'Mount Lofty Summit SA'],
+    36,
+    1.1,
+    '不去袋鼠岛，就在这里喂袋鼠、看考拉：上午开车约 25 分钟到 Cleland 野生动物园，袋鼠、小袋鼠可以直接喂，考拉合影要在官网提前订时段。之后上 Mount Lofty 山顶观景台看全城和海湾，山顶咖啡馆吃午饭。下午回城休息，或去中央市场买水果零食，为第二天的长途做准备（市场营业时间出发前查）。想看狮子、长颈鹿的话，可以改去 Monarto Safari Park（单程约 1 小时）。',
+  );
+  t.days = [...t.days.slice(0, -1), beach, animals, back];
+  for (const p of [...DEFAULT_PLACES.filter((x) => x.name === 'Glenelg SA' || x.name === 'Cleland Wildlife Park SA'), ...F_PLACES]) {
+    if (!t.places.some((x) => x.name === p.name)) t.places.push(p);
+  }
+  for (const x of t.expenses) {
+    const m = x.title.match(/^阿德莱德停车（(\d+) 晚）$/);
+    if (m) {
+      const n = Number(m[1]);
+      x.amount = Math.round((x.amount / n) * (n + 2));
+      x.title = `阿德莱德停车（${n + 2} 晚）`;
+    }
+  }
+  t.expenses.push(
+    { id: newId(), title: 'Cleland 野生动物园家庭票（考拉合影另收费，以官网为准）', category: 'activity', amount: 110, dayId: animals.id, paid: false, url: 'https://www.clelandwildlifepark.sa.gov.au/' },
+    { id: newId(), title: 'Glenelg 电车 + The Beachouse 游玩', category: 'activity', amount: 120, dayId: beach.id, paid: false, quick: true },
+  );
+  return t;
+}
+
+export function addPlanF(trip: Trip): Trip {
+  if (trip.name !== COMPARE_NAME || trip.offered?.includes('F') || trip.versions?.some((v) => v.label === COMPARE_F)) return trip;
+  const ev = trip.versions?.find((v) => v.label === COMPARE_E && v.id === trip.activePlan) ?? trip.versions?.find((v) => v.label === COMPARE_E);
+  let base: Omit<Trip, 'versions'> | null = ev ? (trip.activePlan === ev.id ? snapshot(trip) : ev.snapshot) : null;
+  if (!base) {
+    const dv = trip.versions?.find((v) => v.label === COMPARE_D);
+    if (!dv) return trip;
+    base = buildPlanE(trip.activePlan === dv.id ? snapshot(trip) : dv.snapshot);
+  }
+  const f = base && buildPlanF(base);
+  if (!f) return trip;
+  const t = structuredClone(trip);
+  addVersion(t, COMPARE_F, 'proposal', f);
+  t.offered = [...(t.offered ?? []), 'F'];
   return t;
 }

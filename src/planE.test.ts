@@ -37,3 +37,29 @@ describe('方案 E：D 去掉袋鼠岛、阿德莱德直接回家', () => {
     expect(planOptions(dup).filter((v) => v.label === COMPARE_D).length).toBe(1);
   });
 });
+
+import { addPlanF, COMPARE_F } from './templateKI';
+describe('方案 F：E 的基础上阿德莱德多住两晚', () => {
+  const fresh = createRouteComparisonTrip();
+  const f = fresh.versions!.find((v) => v.label === COMPARE_F)!;
+  const e = fresh.versions!.find((v) => v.label === COMPARE_E)!;
+  it('6 天：E 的前三天 + 海边一天 + 袋鼠考拉一天 + 开回家', () => {
+    const days = f.snapshot.days;
+    expect(days.map((x) => x.to)).toEqual(['Mount Gambier SA', 'Adelaide SA', 'Adelaide SA', 'Adelaide SA', 'Adelaide SA', 'Point Cook VIC']);
+    expect(days[3].stops).toContain('Glenelg SA');
+    expect(days[3].mode).toBe('transit');
+    expect(days[4].stops).toContain('Cleland Wildlife Park SA');
+    expect(days[3].accommodation?.name).toBe(e.snapshot.days[2].accommodation?.name);
+    expect(days[4].accommodation?.booked).toBe(false);
+    expect(days[5].title).toContain('直接开回');
+    expect(f.snapshot.expenses.some((x) => /阿德莱德停车（4 晚）/.test(x.title))).toBe(true);
+    expect(f.snapshot.places.some((p) => p.name === 'Mount Lofty Summit SA')).toBe(true);
+    expect(e.snapshot.days).toHaveLength(4); // E 不变
+  });
+  it('E 被删了也能从 D 生成；只加一次', () => {
+    const noE = { ...fresh, offered: ['E'], versions: fresh.versions!.filter((v) => v.label !== COMPARE_E && v.label !== COMPARE_F) };
+    const up = addPlanF(noE);
+    expect(up.versions!.find((v) => v.label === COMPARE_F)!.snapshot.days).toHaveLength(6);
+    expect(addPlanF(up)).toBe(up);
+  });
+});
